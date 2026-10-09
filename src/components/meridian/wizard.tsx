@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { PLACES } from "@/lib/places";
+import { PLACES, PLACE_GROUPS } from "@/lib/places";
 import { holidayError, holidayLength, slideHoliday, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { formatDayKey, formatWallInput, offsetOnDay, shiftDayKey, wallToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
+import { WalletCard } from "./wallet-card";
 
 type Draft = {
   name: string;
@@ -273,10 +274,14 @@ export function Wizard() {
           <Label text="Place">
             <select aria-label="Place" className={control} value={place} onChange={(event) => setPlace(event.target.value)}>
               <option value="">Choose</option>
-              {PLACES.map((item) => (
-                <option key={item.place} value={item.place}>
-                  {item.place} {offsetOnDay(item.timeZone, from || holidayStart || "")}
-                </option>
+              {PLACE_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.places.map((item) => (
+                    <option key={item.place} value={item.place}>
+                      {from || holidayStart ? `${item.place} ${offsetOnDay(item.timeZone, from || holidayStart || "")}` : item.place}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </Label>
@@ -315,6 +320,7 @@ export function Wizard() {
           <Label text="Insurance">
             <input aria-label="Insurance" className={control} value={wallet.insurance} onChange={(event) => setWallet({ ...wallet, insurance: event.target.value })} />
           </Label>
+          <WalletCard wallet={wallet} />
         </div>
 
         {error || dateError ? <p className="mt-1 text-sm text-danger">{error ?? dateError}</p> : null}

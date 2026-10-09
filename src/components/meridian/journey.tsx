@@ -1,9 +1,10 @@
-import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
+import { easeJourneyLine, holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, offsetOnDay, ukOffsetLabel, wallToUtc, zoneAbbrev } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
+import { WalletCard } from "./wallet-card";
 import { Button, Choice, Note } from "./ui";
 
 export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: string) => void }) {
@@ -22,13 +23,17 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
   const londonDay = dayKeyInZone(now, HOME_TZ);
   const doseZone = scheduleZoneForDay(londonDay, legs, choice);
   const place = placeLabel(legs, doseZone, now);
-  const walletLines = [
-    ["Name", wallet.name],
-    ["Conditions", wallet.conditions],
-    ["Clinic phone", wallet.clinic],
-    ["Emergency contact", wallet.emergency],
-    ["Insurance", wallet.insurance],
-  ].filter(([, value]) => value.trim());
+  const lineup =
+    holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd)
+      ? easeJourneyLine(medicines, legs, holidayStart, holidayEnd, shift)
+      : null;
+  const shortPack =
+    holidayStart && holidayEnd
+      ? medicines.flatMap((medicine) => {
+          const out = runOutDay(medicine, holidayStart);
+          return out && out < holidayEnd ? [{ medicine, out }] : [];
+        })
+      : [];
   const holidayDays =
     holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd) ? holidayLength(holidayStart, holidayEnd) : 0;
 
@@ -53,25 +58,17 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
         <div className="grid gap-2">
           <Button variant="quiet" onClick={download}>Download printable trip</Button>
           <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
-          {medicines.filter((medicine) => runOutDay(medicine, holidayStart)).map((medicine) => (
-            <p key={medicine.id} className="text-sm text-subtle">{medicine.name} runs out {formatDayKey(runOutDay(medicine, holidayStart)!)}</p>
+          {shortPack.map(({ medicine, out }) => (
+            <p key={medicine.id} className="text-sm text-subtle">
+              {medicine.name} runs out {formatDayKey(out)}, before you get home on {formatDayKey(holidayEnd!)}.
+            </p>
           ))}
         </div>
       ) : null}
 
-      {walletLines.length > 0 ? (
-        <section className="rounded-xl border border-line bg-surface p-4">
-          <h2 className="text-sm font-medium text-subtle">Wallet card</h2>
-          <dl className="mt-2 grid gap-2">
-            {walletLines.map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-sm text-subtle">{label}</dt>
-                <dd className="text-sm">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      ) : null}
+      {lineup ? <p className="text-sm text-muted">{lineup}</p> : null}
+
+      <WalletCard wallet={wallet} />
 
       <Choice<ZoneChoice["source"]>
         legend="Reminders follow"

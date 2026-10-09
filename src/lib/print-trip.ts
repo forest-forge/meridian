@@ -10,6 +10,7 @@ import {
   type Medicine,
 } from "./schedule.ts";
 import type { Wallet } from "./store.ts";
+import { walletLines } from "./wallet.ts";
 import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 import type { BodyClock } from "./schedule.ts";
 
@@ -119,16 +120,13 @@ function tripHtml(args: {
     })
     .join("");
 
+  const lines = walletLines(args.wallet);
+  const name = lines.find(([label]) => label === "Name")?.[1] ?? "";
+  const rest = lines.filter(([label]) => label !== "Name");
   const card = [
-    ["Name", args.wallet.name],
-    ["Conditions", args.wallet.conditions],
-    ["Clinic", args.wallet.clinic],
-    ["Emergency", args.wallet.emergency],
-    ["Insurance", args.wallet.insurance],
-  ]
-    .filter(([, value]) => value.trim())
-    .map(([label, value]) => `<p><strong>${label}.</strong> ${esc(value)}</p>`)
-    .join("");
+    name ? `<p class="who">${esc(name)}</p>` : "",
+    ...rest.map(([label, value]) => `<p><strong>${esc(label)}.</strong> ${esc(value)}</p>`),
+  ].join("");
 
   return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><title>Meridian trip</title>
 <style>
@@ -139,12 +137,13 @@ function tripHtml(args: {
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; border-bottom: 1px solid #d9d5cb; padding: 6px 8px 6px 0; vertical-align: top; }
   .card { border: 2px solid #1c211f; padding: 12px; margin-top: 16px; }
+  .card .who { font-family: Palatino, Georgia, serif; font-size: 22px; margin: 0 0 6px; }
   .note { color: #5c6560; margin-top: 24px; }
   @media print { body { margin: 12mm; } section, .card { break-inside: avoid; } }
 </style></head><body>
 <h1>Meridian</h1>
 <p>${esc(formatDayKey(args.holidayStart))} to ${esc(formatDayKey(args.holidayEnd))}. Times are local. UK time is beside them.</p>
-${card ? `<div class="card"><h2>Wallet card</h2>${card}</div>` : ""}
+${card ? `<div class="card"><p>Wallet card</p>${card}</div>` : ""}
 <h2>Kit</h2><ul>${kit || "<li>No medicines.</li>"}</ul>
 ${sections}
 <p class="note">Not medical advice. Eased doses walk about an hour a day toward local time from the day you leave. Doses between midnight and 06:00 local move to 06:00 unless that medicine is marked hold. Import the calendar file so the phone alarms at each dose.</p>

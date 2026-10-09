@@ -4,6 +4,7 @@ import { buildSample } from "./sample.ts";
 import {
   clockLine,
   doseDueOn,
+  easeJourneyLine,
   easeNote,
   gapLabel,
   holidayError,
@@ -316,6 +317,18 @@ describe("ease from the leave date", () => {
     assert.notEqual(next?.ukLabel, homeLondon);
     assert.equal(at("2026-11-29")?.ukLabel, "08:00");
     assert.equal(at("2026-11-30"), undefined);
+  });
+
+  it("says when the dose lines up and when it is back to 08:00 London", () => {
+    const paris = [{ id: "paris", place: "Paris", timeZone: "Europe/Paris", arrive: "2026-11-02T12:00", depart: "2026-11-16T12:00" }];
+    assert.equal(
+      easeJourneyLine([medicine], paris, "2026-11-02", "2026-11-16", 60),
+      "Lines up with Paris on 3 Nov 2026, and is back to 08:00 London on 17 Nov 2026.",
+    );
+    const auckland = [{ id: "akl", place: "Auckland", timeZone: "Pacific/Auckland", arrive: "2026-11-02T12:00", depart: "2026-11-16T12:00" }];
+    const line = easeJourneyLine([medicine], auckland, "2026-11-02", "2026-11-16", 60);
+    assert.match(line ?? "", /Lines up with Auckland on 15 Nov 2026/);
+    assert.match(line ?? "", /back to 08:00 London on 29 Nov 2026/);
   });
 });
 

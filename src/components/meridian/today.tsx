@@ -108,44 +108,53 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
 
   return (
     <div className="grid gap-3">
-      <header className="grid gap-2">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-xs text-subtle">{formatWhen(now, HOME_TZ, true)}</p>
-            <h1 className="font-display text-2xl font-medium tracking-tight">{place}</h1>
-          </div>
-          <p className="text-sm text-subtle tabular-nums">{ukOffsetLabel(zone, londonNoon)}</p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-subtle">{planning ? formatWhen(probe, zone, true) : formatWhen(now, HOME_TZ, true)}</p>
+          <h1 className="truncate font-display text-xl font-medium tracking-tight">{place}</h1>
+          <p className="text-sm text-muted">
+            {ukOffsetLabel(zone, londonNoon)}
+            {" · "}
+            {aheadLabel(dayOffset, homeOffset)}
+          </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 border-y border-line py-2">
-          <Clock label="Here" time={clocks.here} sub={zoneAbbrev(probe, zone)} />
-          <Clock label="UK" time={clocks.uk} sub={zoneAbbrev(now, HOME_TZ)} />
+        <div className="shrink-0 text-right text-xs leading-5 text-subtle tabular-nums">
+          <p>
+            Here <span className="text-sm text-fg">{clocks.here}</span> {zoneAbbrev(probe, zone)}
+          </p>
+          <p>
+            UK <span className="text-sm text-fg">{clocks.uk}</span> {zoneAbbrev(now, HOME_TZ)}
+          </p>
         </div>
-        <p className="text-sm text-muted">
-          {aheadLabel(dayOffset, homeOffset)}
-          {holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd)
-            ? ` · Away ${formatDayKey(holidayStart)} to ${formatDayKey(holidayEnd)}`
-            : ""}
-        </p>
-        {hasEase ? <p className="text-sm text-muted">{easeNote(dayKey, holidayStart, holidayEnd, shift, zoneForSchedule, place)}</p> : null}
       </header>
 
-      {sampleNote ? (
-        <div className="rounded-xl border border-line bg-surface p-4">
-          <p className="text-sm">
-            Sample holiday loaded. Put in your leave and return dates, then replace the examples with the name and dosage you take.
-          </p>
-          <Button className="mt-3" variant="quiet" onClick={dismissSampleNote}>
-            Hide this note
-          </Button>
-        </div>
+      {medicines.length === 0 ? (
+        <p className="text-sm text-muted">Your kit is empty. Add a medicine and Meridian will remind you.</p>
+      ) : hero ? (
+        <DoseCard
+          dose={hero}
+          prominent
+          zoneOffset={offsetMinutes(zone, new Date(hero.scheduledAt))}
+          bodyOffset={bodyOffset}
+          planning={planning}
+          onTaken={() => act(hero, "taken")}
+          onSnooze={() => act(hero, "snoozed")}
+          onSkip={() => act(hero, "skipped")}
+          onEdit={() => onEdit(hero.medicineId)}
+          now={now}
+        />
+      ) : doses.length === 0 && carry.length === 0 ? (
+        <p className="text-sm text-muted">Nothing scheduled this day.</p>
       ) : null}
+
+      {hasEase ? <p className="text-sm text-muted">{easeNote(dayKey, holidayStart, holidayEnd, shift, zoneForSchedule, place)}</p> : null}
 
       <div className="flex items-center gap-2">
         <Button variant="quiet" aria-label="Previous day" onClick={() => setPlanDay(shiftDayKey(dayKey, -1))}>
           Prev
         </Button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="truncate text-sm font-medium">{planning ? `${formatWhen(probe, zone, true)} · ${place}` : "Today"}</p>
+          <p className="truncate text-sm font-medium">{planning ? place : "Today"}</p>
           <input
             type="date"
             aria-label="Plan a day"
@@ -163,24 +172,19 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
           Back to today
         </Button>
       ) : null}
+      {holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd) ? (
+        <p className="text-sm text-subtle">Away {formatDayKey(holidayStart)} to {formatDayKey(holidayEnd)}</p>
+      ) : null}
 
-      {medicines.length === 0 ? (
-        <p className="text-sm text-muted">Your kit is empty. Add a medicine and Meridian will remind you.</p>
-      ) : hero ? (
-        <DoseCard
-          dose={hero}
-          prominent
-          zoneOffset={offsetMinutes(zone, hero ? new Date(hero.scheduledAt) : now)}
-          bodyOffset={bodyOffset}
-          planning={planning}
-          onTaken={() => act(hero, "taken")}
-          onSnooze={() => act(hero, "snoozed")}
-          onSkip={() => act(hero, "skipped")}
-          onEdit={() => onEdit(hero.medicineId)}
-          now={now}
-        />
-      ) : doses.length === 0 && carry.length === 0 ? (
-        <p className="text-sm text-muted">Nothing scheduled this day.</p>
+      {sampleNote ? (
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <p className="text-sm">
+            Sample holiday loaded. Put in your leave and return dates, then replace the examples with the name and dosage you take.
+          </p>
+          <Button className="mt-3" variant="quiet" onClick={dismissSampleNote}>
+            Hide this note
+          </Button>
+        </div>
       ) : null}
 
       {restOpen.length > 0 ? (
@@ -212,10 +216,8 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
               className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left"
             >
               <span className="min-w-0">
-                <span className="block font-display text-2xl font-medium tabular-nums">
-                  {dose.localLabel}
-                  {dose.ukLabel !== dose.localLabel ? <span className="ml-2 font-sans text-sm text-subtle">here</span> : null}
-                </span>
+                <span className="block font-display text-2xl font-medium tabular-nums">{dose.localLabel}</span>
+                <span className="block text-sm text-subtle tabular-nums">{dose.ukLabel} London</span>
                 <span className="mt-1 block text-sm font-medium">{dose.name}</span>
                 <span className="mt-1 block text-sm text-subtle">
                   {FOOD_LABEL[dose.food]} · {WATER_LABEL[dose.water]}
@@ -254,16 +256,6 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
         Not medical advice. Ask your pharmacist or GP before you travel, especially for time-critical medicines.
         Meridian only reminds you.
       </Note>
-    </div>
-  );
-}
-
-function Clock({ label, time, sub }: { label: string; time: string; sub: string }) {
-  return (
-    <div>
-      <p className="text-sm text-subtle">{label}</p>
-      <p className="font-display text-3xl font-medium tabular-nums tracking-tight">{time}</p>
-      <p className="text-sm text-subtle">{sub}</p>
     </div>
   );
 }
@@ -329,18 +321,15 @@ function DoseCard({
 
   return (
     <article className={`rounded-xl border border-line bg-surface p-4 ${urgent ? "due-live" : ""}`}>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className={`font-display tabular-nums tracking-tight ${prominent ? "text-4xl" : "text-2xl"} font-medium`}>
-          {dose.localLabel}
-          {dose.ukLabel !== dose.localLabel ? <span className="ml-2 text-sm font-sans text-subtle">here</span> : null}
-        </p>
+      <div>
+        <p className={`font-display tabular-nums tracking-tight ${prominent ? "text-6xl" : "text-2xl"} font-medium`}>{dose.localLabel}</p>
+        <p className={`tabular-nums text-subtle ${prominent ? "text-lg" : "text-sm"}`}>{dose.ukLabel} London</p>
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-3">
+        <h3 className="text-base font-medium">{dose.name}</h3>
         <p className={`text-sm tabular-nums ${urgent ? "text-danger" : "text-subtle"}`}>{stateLabel}</p>
       </div>
-      <h3 className="mt-1 text-base font-medium">{dose.name}</h3>
       <p className="text-sm text-muted">{dose.dose}</p>
-      <p className="mt-1 text-sm text-subtle tabular-nums">
-        {dose.localLabel} here · {dose.ukLabel} London
-      </p>
       <ul className="mt-3 grid gap-2 text-sm">
         <li className="flex items-center gap-2">
           <FoodIcon className="size-4 shrink-0" aria-hidden="true" />

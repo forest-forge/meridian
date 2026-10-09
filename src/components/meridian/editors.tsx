@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { PLACES } from "@/lib/places";
+import { PLACE_GROUPS } from "@/lib/places";
 import {
   holidayError,
   holidayLength,
@@ -23,7 +23,7 @@ function blankMedicine(): Medicine {
     food: "either",
     water: "full",
     notes: "",
-    mode: "uk",
+    mode: "ease",
     active: true,
     startDate: null,
     endDate: null,
@@ -180,19 +180,19 @@ export function MedicineEditor({
         onChange={(mode) => setDraft({ ...draft, mode })}
         options={[
           {
+            value: "ease",
+            label: "Ease",
+            hint: "Already chosen for a daily tablet. Starts on UK time, then walks toward local time a little each day.",
+          },
+          {
             value: "uk",
-            label: "UK clock",
-            hint: "Always this time in the UK. The gap stays about 24 hours.",
+            label: "UK",
+            hint: "Always this time in the UK. One tap away.",
           },
           {
             value: "local",
-            label: "Local time",
+            label: "Jump",
             hint: "This time wherever you are. It jumps when the time zone changes.",
-          },
-          {
-            value: "ease",
-            label: "Ease across",
-            hint: "Starts on UK time, then walks toward local time a little each day.",
           },
         ]}
       />
@@ -341,20 +341,29 @@ export function LegEditor({
           onChange={(event) => setDraft({ ...draft, place: event.target.value })}
         />
       </Field>
-      <div>
-        <p className="text-sm font-medium">Common from the UK</p>
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-          {PLACES.map((place) => (
-            <button
-              key={place.place}
-              type="button"
-              className="min-h-11 shrink-0 rounded-full border border-line bg-surface px-3 text-sm"
-              onClick={() => setDraft({ ...draft, place: place.place, timeZone: place.timeZone })}
-            >
-              {place.place} {offsetOnDay(place.timeZone, draft.arrive.slice(0, 10), now)}
-            </button>
-          ))}
-        </div>
+      <div className="grid gap-3">
+        <p className="text-sm font-medium">Cities, west to east</p>
+        {PLACE_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="text-xs text-subtle">{group.label}</p>
+            <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
+              {group.places.map((place) => {
+                const day = draft.arrive.slice(0, 10);
+                return (
+                  <button
+                    key={place.place}
+                    type="button"
+                    className="min-h-11 shrink-0 rounded-full border border-line bg-surface px-3 text-sm"
+                    onClick={() => setDraft({ ...draft, place: place.place, timeZone: place.timeZone })}
+                  >
+                    {place.place}
+                    {day ? ` ${offsetOnDay(place.timeZone, day, now)}` : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       <Field label="Time zone" hint={cityFromZone(draft.timeZone)}>
         <TextInput

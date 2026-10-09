@@ -3,6 +3,7 @@ import {
   HOME_TZ,
   cityFromZone,
   dayKeyInZone,
+  formatDayKey,
   formatHm,
   isTimeZone,
   localDayBounds,
@@ -474,6 +475,51 @@ export function easeHomeDay(
     cursor = shiftDayKey(cursor, 1);
   }
   return cursor;
+}
+
+/** One plain line: when Ease meets the furthest stop, and when it is back on London time. */
+export function easeJourneyLine(
+  medicines: Medicine[],
+  legs: Leg[],
+  holidayStart: string,
+  holidayEnd: string,
+  shiftMinutesPerDay: number,
+): string | null {
+  const easing = medicines.filter((medicine) => medicine.active && medicine.mode === "ease");
+  if (easing.length === 0 || legs.length === 0 || holidayError(holidayStart, holidayEnd)) return null;
+  const step = Math.max(1, shiftMinutesPerDay);
+  const zoneForDay = (key: string) => scheduleZoneForDay(key, legs, { source: "journey" });
+  let furthest: Leg | null = null;
+  let furthestGap = -1;
+  for (const leg of legs) {
+    const [year, month, day] = leg.arrive.slice(0, 10).split("-").map(Number);
+    if (!year || !month || !day || !isTimeZone(leg.timeZone)) continue;
+    const at = zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0);
+    const gap = Math.abs(offsetMinutes(leg.timeZone, at) - offsetMinutes(HOME_TZ, at));
+    if (gap > furthestGap) {
+      furthestGap = gap;
+      furthest = leg;
+    }
+  }
+  if (!furthest) return null;
+  const times = easing.flatMap((medicine) => medicine.times.map((value) => normaliseHhmm(value)).filter((value): value is string => Boolean(value)));
+  const clock = times.length > 0 && times.every((value) => value === times[0]) ? times[0] : null;
+  const home = easeHomeDay(holidayStart, holidayEnd, step, zoneForDay);
+  const back = clock ? `back to ${clock} London` : "back on London time";
+  const homeWords = home === holidayEnd ? `on London time when you get home` : `${back} on ${formatDayKey(home)}`;
+  if (furthestGap === 0) return `It stays ${homeWords}.`;
+  let linesUp: string | null = null;
+  for (let cursor = shiftDayKey(holidayStart, 1), i = 0; i < 120 && cursor <= holidayEnd; cursor = shiftDayKey(cursor, 1), i++) {
+    const [year, month, day] = cursor.split("-").map(Number);
+    const target = offsetMinutes(furthest.timeZone, zonedTimeToUtc(furthest.timeZone, year, month, day, 8, 0));
+    const body = easeBody(cursor, 8, 0, holidayStart, holidayEnd, step, zoneForDay);
+    if (body === target) {
+      linesUp = cursor;
+      break;
+    }
+  }
+  if (!linesUp) return `It does not line up with ${furthest.place} before you come home. It is ${homeWords}.`;
+  return `Lines up with ${furthest.place} on ${formatDayKey(linesUp)}, and is ${homeWords}.`;
 }
 
 function medicineDue(
