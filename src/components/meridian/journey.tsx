@@ -1,4 +1,4 @@
-import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
+import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, ukOffsetLabel, wallToUtc, zonedTimeToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
@@ -101,7 +101,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
             const depart = wallToUtc(leg.timeZone, leg.depart);
             const range = legRange(leg);
             const here = range ? now.getTime() >= range.start && now.getTime() < range.end : false;
-            const length = range ? Math.max(1, Math.round((range.end - range.start) / 86_400_000)) : 0;
+            const length = stopLengthDays(leg);
             const [year, month, day] = leg.arrive.slice(0, 10).split("-").map(Number);
             const dayProbe = year && month && day ? zonedTimeToUtc(leg.timeZone, year, month, day, 12, 0) : arrive ?? now;
             return (

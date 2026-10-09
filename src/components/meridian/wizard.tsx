@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
-import { holidayError, holidayLength, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
+import { holidayError, holidayLength, retieDay, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
@@ -247,10 +247,24 @@ export function Wizard() {
         <div className="mt-2 grid gap-1.5">
           <div className="grid grid-cols-2 gap-2">
             <Label text="Leave">
-              <input type="date" aria-label="Leave" className={control} value={holidayStart ?? ""} onChange={(event) => { setHoliday(event.target.value || null, holidayEnd); setError(null); }} />
+              <input type="date" aria-label="Leave" className={control} value={holidayStart ?? ""} onChange={(event) => {
+                const next = event.target.value || null;
+                if (holidayStart && holidayEnd && next) {
+                  setStops((current) => current.map((stop) => ({ ...stop, from: retieDay(stop.from, holidayStart, holidayEnd, next, holidayEnd) })));
+                }
+                setHoliday(next, holidayEnd);
+                setError(null);
+              }} />
             </Label>
             <Label text="Home">
-              <input type="date" aria-label="Home" className={control} value={holidayEnd ?? ""} onChange={(event) => { setHoliday(holidayStart, event.target.value || null); setError(null); }} />
+              <input type="date" aria-label="Home" className={control} value={holidayEnd ?? ""} onChange={(event) => {
+                const next = event.target.value || null;
+                if (holidayStart && holidayEnd && next) {
+                  setStops((current) => current.map((stop) => ({ ...stop, from: retieDay(stop.from, holidayStart, holidayEnd, holidayStart, next) })));
+                }
+                setHoliday(holidayStart, next);
+                setError(null);
+              }} />
             </Label>
           </div>
           {holidayStart && holidayEnd && !dateError ? (

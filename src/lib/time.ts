@@ -114,6 +114,14 @@ export function formatHm(date: Date, timeZone: string): string {
   return `${pad(p.hour)}:${pad(p.minute)}`;
 }
 
+/** Wall clock in the viewed zone: UK time plus that day's offset from London. */
+export function pairedClock(now: Date, viewedDiffMinutes: number): { here: string; uk: string } {
+  return {
+    here: formatOffsetClock(now, offsetMinutes(HOME_TZ, now) + viewedDiffMinutes),
+    uk: formatHm(now, HOME_TZ),
+  };
+}
+
 export function formatOffsetClock(date: Date, offsetMinutesValue: number): string {
   const wall = new Date(date.getTime() + offsetMinutesValue * 60_000);
   return `${pad(wall.getUTCHours())}:${pad(wall.getUTCMinutes())}`;

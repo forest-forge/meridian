@@ -212,6 +212,61 @@ export function holidayLength(start: string, end: string): number {
   return calendarDayDiff(start, end) + 1;
 }
 
+/** Inclusive calendar days, so 2 Nov–16 Nov is 15 even when the clocks are not exactly 14×24h. */
+export function stopLengthDays(leg: Leg): number {
+  const arriveDay = leg.arrive.slice(0, 10);
+  const departDay = leg.depart.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(arriveDay) || !/^\d{4}-\d{2}-\d{2}$/.test(departDay) || departDay < arriveDay) return 0;
+  return holidayLength(arriveDay, departDay);
+}
+
+const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Move a date that was tied to the old holiday onto the new one. */
+export function retieDay(
+  day: string,
+  oldStart: string,
+  oldEnd: string,
+  newStart: string,
+  newEnd: string,
+): string {
+  if (!DAY_KEY.test(day) || !DAY_KEY.test(oldStart) || !DAY_KEY.test(oldEnd) || !DAY_KEY.test(newStart) || !DAY_KEY.test(newEnd)) {
+    return day;
+  }
+  const startDelta = calendarDayDiff(oldStart, newStart);
+  const endDelta = calendarDayDiff(oldEnd, newEnd);
+  if (startDelta === 0 && endDelta === 0) return day;
+  if (startDelta === endDelta) return shiftDayKey(day, startDelta);
+  if (startDelta !== 0 && day === oldStart) return newStart;
+  if (endDelta !== 0 && day === oldEnd) return newEnd;
+  if (startDelta !== 0 && endDelta !== 0) return shiftDayKey(day, startDelta);
+  return day;
+}
+
+export function retieLegs(
+  legs: Leg[],
+  oldStart: string | null,
+  oldEnd: string | null,
+  newStart: string | null,
+  newEnd: string | null,
+): Leg[] {
+  if (!oldStart || !oldEnd || !newStart || !newEnd) return legs;
+  if (holidayError(newStart, newEnd)) return legs;
+  if (oldStart === newStart && oldEnd === newEnd) return legs;
+  return legs.map((leg) => {
+    const arriveDay = leg.arrive.slice(0, 10);
+    const departDay = leg.depart.slice(0, 10);
+    const nextArrive = retieDay(arriveDay, oldStart, oldEnd, newStart, newEnd);
+    let nextDepart = retieDay(departDay, oldStart, oldEnd, newStart, newEnd);
+    if (nextDepart < nextArrive) nextDepart = nextArrive;
+    return {
+      ...leg,
+      arrive: nextArrive + leg.arrive.slice(10),
+      depart: nextDepart + leg.depart.slice(10),
+    };
+  });
+}
+
 function calendarDayDiff(start: string, end: string): number {
   const [ys, ms, ds] = start.split("-").map(Number);
   const [ye, me, de] = end.split("-").map(Number);
@@ -358,7 +413,8 @@ function easeBody(
     return zonedTimeToUtc(HOME_TZ, year, month, day, hour, minute);
   };
   let body = offsetMinutes(HOME_TZ, ukInstant(shiftDayKey(holidayStart, -1)));
-  for (let cursor = holidayStart; cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
+  // The leave day stays on UK time. The first step is the day after departure.
+  for (let cursor = shiftDayKey(holidayStart, 1); cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
     const [year, month, day] = cursor.split("-").map(Number);
     const zone = zoneForDay(cursor) || HOME_TZ;
     const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, hour, minute));
@@ -489,16 +545,21 @@ export function makeTargetAt(legs: Leg[], choice: ZoneChoice, phoneTz: string): 
   return (instant: Date) => offsetMinutes(zoneForInstant(legs, instant, choice, phoneTz), instant);
 }
 
-export function gapLabel(hours: number | null, stepMinutes = 60): string | null {
+export function gapLabel(hours: number | null, _stepMinutes = 60): string | null {
   if (hours == null || !Number.isFinite(hours)) return null;
+  const mins = Math.round(Math.abs(hours) * 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const text = m === 0 ? `${h} hours` : `${h} h ${m} min`;
+  return `Gap since the previous dose: ${text}.`;
+}
+
+export function gapIsExpected(hours: number | null, stepMinutes = 60): boolean {
+  if (hours == null || !Number.isFinite(hours)) return true;
   const mins = Math.round(hours * 60);
   const day = 24 * 60;
   const step = Math.max(0, Math.round(stepMinutes));
-  if (mins === day || mins === day + step || mins === day - step) return null;
-  const h = Math.floor(Math.abs(mins) / 60);
-  const m = Math.abs(mins) % 60;
-  const text = m === 0 ? `${h} hours` : `${h} h ${m} min`;
-  return `Gap since the previous dose: ${text}, not 24.`;
+  return mins === day || mins === day + step || mins === day - step;
 }
 
 export const FOOD_LABEL: Record<FoodRule, string> = {
@@ -522,13 +583,12 @@ export const MODE_LABEL: Record<ClockMode, string> = {
 
 export function clockLine(dose: DoseView, _zoneOffset?: number, _bodyOffset?: number): string {
   if (dose.mode === "ease") {
+    if (dose.ukLabel === dose.hhmm && dose.localLabel !== dose.ukLabel) return "Has not jumped yet";
     if (dose.localLabel === dose.hhmm && dose.ukLabel !== dose.hhmm) {
-      return `${dose.localLabel} local · eased onto this time zone`;
+      return `${dose.localLabel} local · ${dose.ukLabel} London`;
     }
-    if (dose.ukLabel === dose.localLabel || dose.ukLabel === dose.hhmm) {
-      return "UK time, nothing is shifting";
-    }
-    return `${dose.localLabel} here · ${dose.ukLabel} UK, shifting`;
+    if (dose.ukLabel === dose.localLabel) return "UK time, nothing is shifting";
+    return `${dose.localLabel} here · ${dose.ukLabel} London, shifting`;
   }
   if (dose.mode === "uk") return dose.ukLabel === dose.localLabel ? "Same time as home" : `Taken at ${dose.ukLabel} UK`;
   return `${dose.localLabel} local · ${dose.ukLabel} UK`;
@@ -545,6 +605,7 @@ export function easeNote(
   if (!holidayStart || !holidayEnd || dayKey < holidayStart) {
     return "Nothing is shifting. Doses stay on UK time until you leave.";
   }
+  if (dayKey === holidayStart) return "Has not jumped yet. Ease starts the day after you leave.";
   if (dayKey > holidayEnd) return "Doses are back on UK time.";
   const step = Math.max(1, shiftMinutesPerDay);
   const body = easeBody(dayKey, 12, 0, holidayStart, step, zoneForDay);

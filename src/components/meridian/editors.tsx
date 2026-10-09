@@ -351,7 +351,8 @@ export function LegEditor({
               className="min-h-11 shrink-0 rounded-full border border-line bg-surface px-3 text-sm"
               onClick={() => setDraft({ ...draft, place: place.place, timeZone: place.timeZone })}
             >
-              {place.place}
+              {place.place}{" "}
+              {ukOffsetLabel(place.timeZone, wallToUtc(place.timeZone, `${draft.arrive.slice(0, 10)}T12:00`) ?? now)}
             </button>
           ))}
         </div>

@@ -7,13 +7,13 @@ import {
   WATER_LABEL,
   clockLine,
   easeNote,
+  gapIsExpected,
   gapLabel,
   holidayError,
   liveAgenda,
   makeTargetAt,
   placeLabel,
   scheduleZoneForDay,
-  zoneForInstant,
 } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import {
@@ -22,9 +22,9 @@ import {
   countdown,
   dayKeyInZone,
   formatDayKey,
-  formatHm,
   formatWhen,
   offsetMinutes,
+  pairedClock,
   shiftDayKey,
   ukOffsetLabel,
   zoneAbbrev,
@@ -56,7 +56,6 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const zone = zoneForSchedule(dayKey);
   const planning = planDay != null && planDay !== todayKey;
   const targetAt = useMemo(() => makeTargetAt(legs, choice, phoneTz), [legs, choice, phoneTz]);
-  const liveZone = zoneForInstant(legs, now, choice, phoneTz);
   const hasEase = medicines.some((medicine) => medicine.active && medicine.mode === "ease");
   const [year, month, day] = dayKey.split("-").map(Number);
   const probe = zonedTimeToUtc(zone, year, month, day, 12, 0);
@@ -90,6 +89,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const dayOffset = offsetMinutes(zone, probe);
   const homeOffset = offsetMinutes(HOME_TZ, probe);
   const bodyOffset = dayOffset;
+  const clocks = pairedClock(now, dayOffset - homeOffset);
 
   function act(dose: DoseView, status: "taken" | "skipped" | "snoozed") {
     logDose({
@@ -108,14 +108,14 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
       <header className="grid gap-2">
         <div className="flex items-end justify-between gap-3">
           <div>
-            <p className="text-xs text-subtle">{formatWhen(now, liveZone, true)}</p>
+            <p className="text-xs text-subtle">{formatWhen(now, HOME_TZ, true)}</p>
             <h1 className="font-display text-2xl font-medium tracking-tight">{place}</h1>
           </div>
           <p className="text-sm text-subtle tabular-nums">{ukOffsetLabel(zone, probe)}</p>
         </div>
         <div className="grid grid-cols-2 gap-3 border-y border-line py-2">
-          <Clock label="Here" time={formatHm(now, liveZone)} sub={zoneAbbrev(now, liveZone)} />
-          <Clock label="UK" time={formatHm(now, HOME_TZ)} sub={zoneAbbrev(now, HOME_TZ)} />
+          <Clock label="Here" time={clocks.here} sub={zoneAbbrev(probe, zone)} />
+          <Clock label="UK" time={clocks.uk} sub={zoneAbbrev(now, HOME_TZ)} />
         </div>
         <p className="text-sm text-muted">
           {aheadLabel(dayOffset, homeOffset)}
@@ -318,6 +318,7 @@ function DoseCard({
   const urgent = dose.state === "due" || dose.state === "overdue";
   const FoodIcon = dose.food === "empty" ? UtensilsCrossed : Utensils;
   const gap = gapLabel(dose.gapHours, useMeridian.getState().shiftMinutesPerDay);
+  const gapExpected = gapIsExpected(dose.gapHours, useMeridian.getState().shiftMinutesPerDay);
   const when =
     dose.state === "snoozed" && dose.snoozeUntil
       ? `back ${countdown(new Date(dose.snoozeUntil), now)}`
@@ -334,6 +335,9 @@ function DoseCard({
       </div>
       <h3 className="mt-1 text-base font-medium">{dose.name}</h3>
       <p className="text-sm text-muted">{dose.dose}</p>
+      <p className="mt-1 text-sm text-subtle tabular-nums">
+        {dose.localLabel} here · {dose.ukLabel} London
+      </p>
       <ul className="mt-3 grid gap-2 text-sm">
         <li className="flex items-center gap-2">
           <FoodIcon className="size-4 shrink-0" aria-hidden="true" />
@@ -352,7 +356,7 @@ function DoseCard({
         {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
       </p>
       {!planning ? <p className="text-sm text-subtle tabular-nums">{when}</p> : null}
-      {gap ? <p className="mt-2 text-sm text-danger">{gap}</p> : null}
+      {gap ? <p className={`mt-2 text-sm ${gapExpected ? "text-subtle" : "text-danger"}`}>{gap}</p> : null}
       {!planning && dose.state !== "taken" && dose.state !== "skipped" ? (
         dose.state === "later" ? (
           <Button className="mt-4" variant="quiet" onClick={onTaken}>
