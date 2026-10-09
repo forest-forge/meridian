@@ -130,6 +130,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
         <DoseCard
           dose={hero}
           prominent
+          dayKey={dayKey}
           zoneOffset={offsetMinutes(zone, new Date(hero.scheduledAt))}
           bodyOffset={bodyOffset}
           planning={planning}
@@ -193,6 +194,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
             <DoseCard
               key={dose.key}
               dose={dose}
+              dayKey={dayKey}
               zoneOffset={offsetMinutes(zone, new Date(dose.scheduledAt))}
               bodyOffset={bodyOffset}
               planning={planning}
@@ -217,7 +219,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
             >
               <span className="min-w-0">
                 <span className="block font-display text-2xl font-medium tabular-nums">{dose.localLabel}</span>
-                <span className="block text-sm text-subtle tabular-nums">{dose.ukLabel} London</span>
+                <span className="block text-sm text-subtle tabular-nums">{dayKeyInZone(new Date(dose.scheduledAt), HOME_TZ) < dayKey ? `${dose.ukLabel} London, the day before` : `${dose.ukLabel} London`}</span>
                 <span className="mt-1 block text-sm font-medium">{dose.name}</span>
                 <span className="mt-1 block text-sm text-subtle">
                   {FOOD_LABEL[dose.food]} · {WATER_LABEL[dose.water]}
@@ -239,6 +241,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
             <DoseCard
               key={dose.key}
               dose={dose}
+              dayKey={dayKey}
               zoneOffset={offsetMinutes(zone, new Date(dose.scheduledAt))}
               bodyOffset={bodyOffset}
               planning={planning}
@@ -272,6 +275,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function DoseCard({
   dose,
   prominent,
+  dayKey,
   zoneOffset,
   bodyOffset,
   planning,
@@ -284,6 +288,7 @@ function DoseCard({
 }: {
   dose: DoseView;
   prominent?: boolean;
+  dayKey?: string;
   zoneOffset: number;
   bodyOffset: number;
   planning: boolean;
@@ -320,12 +325,19 @@ function DoseCard({
     dose.state === "snoozed" && dose.snoozeUntil
       ? `back ${countdown(new Date(dose.snoozeUntil), now)}`
       : countdown(new Date(dose.scheduledAt), now);
+  const londonDay = dayKeyInZone(new Date(dose.scheduledAt), HOME_TZ);
+  const londonWhen =
+    dayKey && londonDay < dayKey
+      ? `${dose.ukLabel} London, the day before`
+      : dayKey && londonDay > dayKey
+        ? `${dose.ukLabel} London, the next day`
+        : `${dose.ukLabel} London`;
 
   return (
     <article className={`rounded-xl border border-line bg-surface p-4 ${urgent ? "due-live" : ""}`}>
       <div>
         <p className={`font-display tabular-nums tracking-tight ${prominent ? "text-6xl" : "text-2xl"} font-medium`}>{dose.localLabel}</p>
-        <p className={`tabular-nums text-subtle ${prominent ? "text-lg" : "text-sm"}`}>{dose.ukLabel} London</p>
+        <p className={`tabular-nums text-subtle ${prominent ? "text-lg" : "text-sm"}`}>{londonWhen}</p>
       </div>
       <div className="mt-2 flex items-baseline justify-between gap-3">
         <h3 className="text-base font-medium">{dose.name}</h3>
@@ -367,9 +379,11 @@ function DoseCard({
       {dose.movedFrom ? (
         <p className="mt-3 text-sm text-subtle">Moved from {dose.movedFrom}. Asleep until 06:00.</p>
       ) : null}
-      <p className="mt-3 text-sm text-subtle">
-        {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
-      </p>
+      {dose.mode === "ease" ? null : (
+        <p className="mt-3 text-sm text-subtle">
+          {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
+        </p>
+      )}
       {!planning && dose.state !== "taken" && dose.state !== "skipped" ? <p className="text-sm text-subtle tabular-nums">{when}</p> : null}
       {gap ? <p className={`mt-2 text-sm ${gapExpected ? "text-subtle" : "text-danger"}`}>{gap}</p> : null}
       {!planning && dose.state !== "taken" && dose.state !== "skipped" ? (

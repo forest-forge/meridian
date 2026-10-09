@@ -738,6 +738,14 @@ export function clockLine(dose: DoseView, _zoneOffset?: number, _bodyOffset?: nu
   return `${dose.localLabel} local · ${dose.ukLabel} UK`;
 }
 
+function hoursLeft(minutes: number): string {
+  const abs = Math.abs(Math.round(minutes));
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hour${h === 1 ? "" : "s"}` : `${h} h ${m} min`;
+}
+
 export function easeNote(
   dayKey: string,
   holidayStart: string | null,
@@ -757,8 +765,7 @@ export function easeNote(
   const london = offsetMinutes(HOME_TZ, zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0));
   if (dayKey > holidayEnd) {
     if (body === london) return "Doses are back on UK time.";
-    const days = Math.max(1, Math.ceil(Math.abs(london - body) / step));
-    return `Walking back toward London. About ${days} day${days === 1 ? "" : "s"} to go.`;
+    return `Walking back toward London. ${hoursLeft(london - body)} still to go.`;
   }
   const zone = zoneForDay(dayKey) || HOME_TZ;
   const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, 12, 0));
@@ -768,24 +775,12 @@ export function easeNote(
 export function easeSummary(
   bodyOffset: number,
   zoneOffset: number,
-  shiftMinutesPerDay: number,
+  _shiftMinutesPerDay: number,
   place: string,
 ): string {
   const remaining = zoneOffset - bodyOffset;
-  if (remaining === 0) return `Eased doses are on ${place} time.`;
-  const days = Math.max(1, Math.ceil(Math.abs(remaining) / Math.max(1, shiftMinutesPerDay)));
-  const relation = remaining > 0 ? "behind" : "ahead of";
-  const abs = Math.abs(remaining);
-  const h = Math.floor(abs / 60);
-  const m = abs % 60;
-  const hm = m === 0 ? `${h} hour${h === 1 ? "" : "s"}` : `${h} h ${m} min`;
-  const rate =
-    shiftMinutesPerDay === 60
-      ? "1 hour a day"
-      : shiftMinutesPerDay === 120
-        ? "2 hours a day"
-        : `${shiftMinutesPerDay} min a day`;
-  return `Eased doses are ${hm} ${relation} ${place}. About ${days} day${days === 1 ? "" : "s"} to line up, at ${rate}.`;
+  if (remaining === 0) return `On ${place} time. The dose is not moving.`;
+  return `Moving toward ${place}. ${hoursLeft(remaining)} still to go.`;
 }
 
 export function sortedLegs(legs: Leg[]): Leg[] {
