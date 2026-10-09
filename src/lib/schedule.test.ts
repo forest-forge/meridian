@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { buildSample } from "./sample.ts";
+import { tripHtml } from "./print-trip.ts";
 import {
   clockLine,
   doseDueOn,
@@ -545,5 +546,25 @@ describe("missed doses", () => {
       ]);
     assert.equal(marked("taken").doses[0]?.state, "taken");
     assert.equal(marked("skipped").doses[0]?.state, "skipped");
+  });
+});
+
+describe("printable trip", () => {
+  it("opens with the wallet card and hides empty lines", () => {
+    const html = tripHtml({
+      medicines: [],
+      legs: [],
+      holidayStart: "2026-11-02",
+      holidayEnd: "2026-11-16",
+      wallet: { name: "Ada", conditions: "Heart failure", clinic: "0161 000 000", emergency: "", insurance: "AXA 123" },
+      clock: { offsetMinutes: 0, asOf: "2026-11-01T00:00:00.000Z" },
+      shiftMinutesPerDay: 60,
+    });
+    assert.match(html, /Wallet card/);
+    assert.match(html, /Ada/);
+    assert.match(html, /Heart failure/);
+    assert.match(html, /Clinic phone/);
+    assert.match(html, /AXA 123/);
+    assert.doesNotMatch(html, /Emergency contact/);
   });
 });

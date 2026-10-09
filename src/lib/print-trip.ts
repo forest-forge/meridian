@@ -23,7 +23,15 @@ export function downloadTripSheet(args: {
   clock: BodyClock;
   shiftMinutesPerDay: number;
 }): void {
-  const blob = new Blob([tripHtml(args)], { type: "text/html" });
+  const html = tripHtml(args);
+  const page = window.open("", "_blank");
+  if (page) {
+    page.document.open();
+    page.document.write(html);
+    page.document.close();
+    return;
+  }
+  const blob = new Blob([html], { type: "text/html" });
   saveBlob(blob, `meridian-${args.holidayStart}.html`);
 }
 
@@ -56,7 +64,7 @@ function saveBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
-function tripHtml(args: {
+export function tripHtml(args: {
   medicines: Medicine[];
   legs: Leg[];
   holidayStart: string;

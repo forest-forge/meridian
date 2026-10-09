@@ -14,6 +14,7 @@ import {
   makeTargetAt,
   placeLabel,
   scheduleZoneForDay,
+  type ClockMode,
 } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import {
@@ -107,25 +108,20 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   }
 
   return (
-    <div className="grid gap-3">
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-subtle">{planning ? formatWhen(probe, zone, true) : formatWhen(now, HOME_TZ, true)}</p>
-          <h1 className="truncate font-display text-xl font-medium tracking-tight">{place}</h1>
-          <p className="text-sm text-muted">
-            {ukOffsetLabel(zone, londonNoon)}
-            {" · "}
-            {aheadLabel(dayOffset, homeOffset)}
-          </p>
-        </div>
-        <div className="shrink-0 text-right text-xs leading-5 text-subtle tabular-nums">
-          <p>
-            Here <span className="text-sm text-fg">{clocks.here}</span> {zoneAbbrev(probe, zone)}
-          </p>
-          <p>
-            UK <span className="text-sm text-fg">{clocks.uk}</span> {zoneAbbrev(now, HOME_TZ)}
-          </p>
-        </div>
+    <div className="relative grid gap-3">
+      <p className="absolute right-0 top-0 text-right text-[11px] leading-4 text-subtle tabular-nums">
+        Here {clocks.here} {zoneAbbrev(probe, zone)}
+        <br />
+        UK {clocks.uk} {zoneAbbrev(now, HOME_TZ)}
+      </p>
+      <header className="pr-28">
+        <p className="text-xs text-subtle">{planning ? formatWhen(probe, zone, true) : formatWhen(now, HOME_TZ, true)}</p>
+        <h1 className="truncate font-display text-xl font-medium tracking-tight">{place}</h1>
+        <p className="text-sm text-muted">
+          {ukOffsetLabel(zone, londonNoon)}
+          {" · "}
+          {aheadLabel(dayOffset, homeOffset)}
+        </p>
       </header>
 
       {medicines.length === 0 ? (
@@ -137,6 +133,10 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
           zoneOffset={offsetMinutes(zone, new Date(hero.scheduledAt))}
           bodyOffset={bodyOffset}
           planning={planning}
+          onMode={(mode) => {
+            const medicine = useMeridian.getState().medicines.find((item) => item.id === hero.medicineId);
+            if (medicine && medicine.mode !== mode) useMeridian.getState().saveMedicine({ ...medicine, mode });
+          }}
           onTaken={() => act(hero, "taken")}
           onSnooze={() => act(hero, "snoozed")}
           onSkip={() => act(hero, "skipped")}
@@ -276,6 +276,7 @@ function DoseCard({
   bodyOffset,
   planning,
   now,
+  onMode,
   onTaken,
   onSnooze,
   onSkip,
@@ -287,6 +288,7 @@ function DoseCard({
   bodyOffset: number;
   planning: boolean;
   now: Date;
+  onMode?: (mode: ClockMode) => void;
   onTaken: () => void;
   onSnooze: () => void;
   onSkip: () => void;
@@ -330,6 +332,27 @@ function DoseCard({
         <p className={`text-sm tabular-nums ${urgent ? "text-danger" : "text-subtle"}`}>{stateLabel}</p>
       </div>
       <p className="text-sm text-muted">{dose.dose}</p>
+      {prominent && onMode ? (
+        <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Clock">
+          {(
+            [
+              ["ease", "Ease"],
+              ["uk", "UK"],
+              ["local", "Jump"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={dose.mode === mode}
+              className={`min-h-11 rounded-md border text-sm ${dose.mode === mode ? "border-accent bg-accent text-accent-fg" : "border-line bg-surface"}`}
+              onClick={() => onMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <ul className="mt-3 grid gap-2 text-sm">
         <li className="flex items-center gap-2">
           <FoodIcon className="size-4 shrink-0" aria-hidden="true" />
