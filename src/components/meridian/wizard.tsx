@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
 import { holidayError, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { formatDayKey, formatWallInput, wallToUtc } from "@/lib/time";
+import { formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
 
@@ -204,7 +204,9 @@ export function Wizard() {
             <select aria-label="Place" className={control} value={place} onChange={(event) => setPlace(event.target.value)}>
               <option value="">Choose</option>
               {PLACES.map((item) => (
-                <option key={item.place} value={item.place}>{item.place}</option>
+                <option key={item.place} value={item.place}>
+                  {item.place} {ukOffsetLabel(item.timeZone, from ? new Date(`${from}T12:00:00Z`) : new Date())}
+                </option>
               ))}
             </select>
           </Label>
@@ -216,7 +218,9 @@ export function Wizard() {
             <ul className="grid gap-1">
               {stops.map((stop) => (
                 <li key={`${stop.place}-${stop.from}`} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="min-w-0 truncate">{stop.place} from {formatDayKey(stop.from)}</span>
+                  <span className="min-w-0 truncate">
+                    {stop.place} {ukOffsetLabel(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", new Date(`${stop.from}T12:00:00Z`))} from {formatDayKey(stop.from)}
+                  </span>
                   <button type="button" className="min-h-11 shrink-0 text-subtle" onClick={() => setStops(stops.filter((item) => item !== stop))}>
                     Remove
                   </button>

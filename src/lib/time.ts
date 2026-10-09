@@ -45,7 +45,15 @@ export function partsInZone(date: Date, timeZone: string): ZonedParts {
   };
 }
 
-/** Minutes east of UTC for `timeZone` at `date`. */
+/** Hours ahead of UK time at `date`, such as +1, +5:30, or −5. */
+export function ukOffsetLabel(timeZone: string, date: Date): string {
+  const diff = offsetMinutes(timeZone, date) - offsetMinutes(HOME_TZ, date);
+  const sign = diff < 0 ? "−" : "+";
+  const abs = Math.abs(diff);
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+  return mins === 0 ? `${sign}${hours}` : `${sign}${hours}:${pad(mins)}`;
+}
 export function offsetMinutes(timeZone: string, date: Date): number {
   const p = partsInZone(date, timeZone);
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
