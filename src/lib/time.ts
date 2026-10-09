@@ -54,6 +54,13 @@ export function ukOffsetLabel(timeZone: string, date: Date): string {
   const mins = abs % 60;
   return mins === 0 ? `${sign}${hours}` : `${sign}${hours}:${pad(mins)}`;
 }
+
+/** That calendar day's offset, taken at noon in London so the UK clock change counts. */
+export function offsetOnDay(timeZone: string, dayKey: string, fallback: Date = new Date()): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const at = year && month && day ? zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0) : fallback;
+  return ukOffsetLabel(timeZone, at);
+}
 export function offsetMinutes(timeZone: string, date: Date): number {
   const p = partsInZone(date, timeZone);
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);

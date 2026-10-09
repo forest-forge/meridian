@@ -168,8 +168,8 @@ export function stopZoneForDay(dayKey: string, legs: Leg[]): string {
       zone = leg.timeZone;
       continue;
     }
-    // An evening arrival is still that stop, even though noon was before landing.
-    if (leg.arrive.slice(0, 10) === dayKey) zone = leg.timeZone;
+    // Arrival morning and the day you fly home are still this stop. A noon departure must not flip the day to London.
+    if (leg.arrive.slice(0, 10) === dayKey || leg.depart.slice(0, 10) === dayKey) zone = leg.timeZone;
   }
   return zone;
 }

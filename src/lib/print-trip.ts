@@ -76,9 +76,10 @@ function tripHtml(args: {
     .map((day) => {
       const zone = scheduleZoneForDay(day, args.legs, choice);
       const [year, month, date] = day.split("-").map(Number);
-      const noon = zonedTimeToUtc(zone, year, month, date, 12, 0);
-      const place = placeLabel(args.legs, zone, noon);
-      const offset = ukOffsetLabel(zone, noon);
+      const localNoon = zonedTimeToUtc(zone, year, month, date, 12, 0);
+      const londonNoon = zonedTimeToUtc(HOME_TZ, year, month, date, 12, 0);
+      const place = placeLabel(args.legs, zone, localNoon);
+      const offset = ukOffsetLabel(zone, londonNoon);
       const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
       const { doses } = liveAgenda({
         medicines: args.medicines,

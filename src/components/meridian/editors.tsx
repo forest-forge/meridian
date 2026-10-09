@@ -11,7 +11,7 @@ import {
   type ZoneChoice,
 } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { allTimeZones, cityFromZone, formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
+import { allTimeZones, cityFromZone, formatDayKey, formatWallInput, offsetOnDay } from "@/lib/time";
 import { Button, Choice, Field, Note, Sheet, TextArea, TextInput } from "./ui";
 
 function blankMedicine(): Medicine {
@@ -351,8 +351,7 @@ export function LegEditor({
               className="min-h-11 shrink-0 rounded-full border border-line bg-surface px-3 text-sm"
               onClick={() => setDraft({ ...draft, place: place.place, timeZone: place.timeZone })}
             >
-              {place.place}{" "}
-              {ukOffsetLabel(place.timeZone, wallToUtc(place.timeZone, `${draft.arrive.slice(0, 10)}T12:00`) ?? now)}
+              {place.place} {offsetOnDay(place.timeZone, draft.arrive.slice(0, 10), now)}
             </button>
           ))}
         </div>
@@ -374,10 +373,7 @@ export function LegEditor({
           >
             <span className="truncate">{zone.replace(/_/g, " ")}</span>
             <span className="shrink-0 text-subtle tabular-nums">
-              {ukOffsetLabel(
-                zone,
-                wallToUtc(zone, `${draft.arrive.slice(0, 10)}T12:00`) ?? now,
-              )}
+              {offsetOnDay(zone, draft.arrive.slice(0, 10), now)}
             </span>
           </button>
         ))}

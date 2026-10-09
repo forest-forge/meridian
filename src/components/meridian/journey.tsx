@@ -1,6 +1,6 @@
 import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, ukOffsetLabel, wallToUtc, zoneAbbrev, zonedTimeToUtc } from "@/lib/time";
+import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, offsetOnDay, ukOffsetLabel, wallToUtc, zoneAbbrev } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
@@ -123,8 +123,6 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
             const range = legRange(leg);
             const here = range ? now.getTime() >= range.start && now.getTime() < range.end : false;
             const length = stopLengthDays(leg);
-            const [year, month, day] = leg.arrive.slice(0, 10).split("-").map(Number);
-            const dayProbe = year && month && day ? zonedTimeToUtc(leg.timeZone, year, month, day, 12, 0) : arrive ?? now;
             return (
               <li key={leg.id}>
                 <button
@@ -137,7 +135,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
                     <span className="text-sm text-subtle">{here ? "Here now" : `${length} day${length === 1 ? "" : "s"}`}</span>
                   </div>
                   <p className="mt-1 text-sm text-muted">
-                    {cityFromZone(leg.timeZone)} · {ukOffsetLabel(leg.timeZone, dayProbe)}
+                    {cityFromZone(leg.timeZone)} · {offsetOnDay(leg.timeZone, leg.arrive.slice(0, 10), now)}
                   </p>
                   <p className="mt-2 text-sm text-subtle tabular-nums">
                     {arrive ? formatShortWhen(arrive, leg.timeZone) : leg.arrive}

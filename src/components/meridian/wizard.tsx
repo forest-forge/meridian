@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
 import { holidayError, holidayLength, slideHoliday, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { formatDayKey, formatWallInput, shiftDayKey, ukOffsetLabel, wallToUtc } from "@/lib/time";
+import { formatDayKey, formatWallInput, offsetOnDay, shiftDayKey, wallToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
@@ -275,7 +275,7 @@ export function Wizard() {
               <option value="">Choose</option>
               {PLACES.map((item) => (
                 <option key={item.place} value={item.place}>
-                  {item.place} {ukOffsetLabel(item.timeZone, wallToUtc(item.timeZone, `${from || holidayStart || ""}T12:00`) ?? new Date())}
+                  {item.place} {offsetOnDay(item.timeZone, from || holidayStart || "")}
                 </option>
               ))}
             </select>
@@ -289,7 +289,7 @@ export function Wizard() {
               {stops.map((stop) => (
                 <li key={`${stop.place}-${stop.from}`} className="flex items-center justify-between gap-2 text-sm">
                   <span className="min-w-0 truncate">
-                    {stop.place} {ukOffsetLabel(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", wallToUtc(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", `${stop.from}T12:00`) ?? new Date())} from {formatDayKey(stop.from)}
+                    {stop.place} {offsetOnDay(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", stop.from)} from {formatDayKey(stop.from)}
                   </span>
                   <button type="button" className="min-h-11 shrink-0 text-subtle" onClick={() => setStops(stops.filter((item) => item !== stop))}>
                     Remove

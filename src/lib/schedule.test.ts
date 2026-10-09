@@ -21,7 +21,7 @@ import {
   type LogEntry,
   type Medicine,
 } from "./schedule.ts";
-import { HOME_TZ, countdown, formatDayKey, pairedClock, phoneZoneName, ukOffsetLabel, zoneAbbrev, zonedTimeToUtc } from "./time.ts";
+import { HOME_TZ, countdown, formatDayKey, offsetOnDay, pairedClock, phoneZoneName, ukOffsetLabel, zoneAbbrev, zonedTimeToUtc } from "./time.ts";
 
 describe("time zones", () => {
   it("converts a UK morning in BST to UTC", () => {
@@ -48,6 +48,12 @@ describe("offsets from the UK", () => {
     assert.equal(ukOffsetLabel("Asia/Dubai", november), "+4");
     assert.equal(ukOffsetLabel("Asia/Kolkata", august), "+4:30");
     assert.equal(ukOffsetLabel("Asia/Kolkata", november), "+5:30");
+    assert.equal(offsetOnDay("Asia/Dubai", "2026-10-24"), "+3");
+    assert.equal(offsetOnDay("Asia/Singapore", "2026-10-24"), "+7");
+    assert.equal(offsetOnDay("Pacific/Auckland", "2026-10-24"), "+12");
+    assert.equal(offsetOnDay("Asia/Dubai", "2026-10-25"), "+4");
+    assert.equal(offsetOnDay("Asia/Singapore", "2026-10-25"), "+8");
+    assert.equal(offsetOnDay("Pacific/Auckland", "2026-10-25"), "+13");
   });
 
   it("keeps the header clocks apart by that day's offset", () => {
@@ -248,6 +254,68 @@ describe("ease from the leave date", () => {
     assert.equal(at("2026-11-21")?.ukLabel, "08:00");
     assert.equal(at("2026-11-21")?.localLabel, "08:00");
     assert.equal(at("2026-11-22"), undefined);
+  });
+
+  it("keeps the home day on stop time when the flight is at noon", () => {
+    const noonLegs = [{ id: "paris", place: "Paris", timeZone: "Europe/Paris", arrive: "2026-11-02T12:00", depart: "2026-11-16T12:00" }];
+    const noonZone = (key: string) => scheduleZoneForDay(key, noonLegs, { source: "journey" });
+    const at = (dayKey: string) =>
+      liveAgenda({
+        medicines: [medicine],
+        dayKey,
+        labelZone: noonZone(dayKey),
+        zoneForDay: noonZone,
+        now: new Date("2026-10-09T08:00:00.000Z"),
+        leadMinutes: 0,
+        logs: [],
+        clock: { offsetMinutes: 0, asOf: "2026-09-01T00:00:00.000Z" },
+        shiftMinutesPerDay: 60,
+        targetAt: () => 0,
+        carryover: false,
+        holidayStart: "2026-11-02",
+        holidayEnd: "2026-11-16",
+      }).doses[0];
+    const home = at("2026-11-16");
+    assert.equal(home?.localLabel, "08:00");
+    assert.equal(home?.ukLabel, "07:00");
+    assert.equal(home?.gapHours, 24);
+    assert.match(clockLine(home!), /Has not jumped back yet/);
+    const back = at("2026-11-17");
+    assert.equal(back?.localLabel, "08:00");
+    assert.equal(back?.ukLabel, "08:00");
+    assert.equal(back?.gapHours, 25);
+  });
+
+  it("walks Auckland back one hour a day", () => {
+    const city = "Pacific/Auckland";
+    const legs = [{ id: "akl", place: "Auckland", timeZone: city, arrive: "2026-11-02T12:00", depart: "2026-11-16T12:00" }];
+    const zoneFor = (key: string) => scheduleZoneForDay(key, legs, { source: "journey" });
+    const at = (dayKey: string) =>
+      liveAgenda({
+        medicines: [medicine],
+        dayKey,
+        labelZone: zoneFor(dayKey),
+        zoneForDay: zoneFor,
+        now: new Date("2026-10-09T08:00:00.000Z"),
+        leadMinutes: 0,
+        logs: [],
+        clock: { offsetMinutes: 0, asOf: "2026-09-01T00:00:00.000Z" },
+        shiftMinutesPerDay: 60,
+        targetAt: () => 0,
+        carryover: false,
+        holidayStart: "2026-11-02",
+        holidayEnd: "2026-11-16",
+      }).doses[0];
+    const home = at("2026-11-16");
+    assert.equal(home?.localLabel, "08:00");
+    assert.match(clockLine(home!), /Has not jumped back yet/);
+    const homeLondon = home?.ukLabel;
+    const next = at("2026-11-17");
+    assert.notEqual(next?.ukLabel, "08:00");
+    assert.equal(next?.gapHours, 25);
+    assert.notEqual(next?.ukLabel, homeLondon);
+    assert.equal(at("2026-11-29")?.ukLabel, "08:00");
+    assert.equal(at("2026-11-30"), undefined);
   });
 });
 

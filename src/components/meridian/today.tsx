@@ -60,6 +60,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const hasEase = medicines.some((medicine) => medicine.active && medicine.mode === "ease");
   const [year, month, day] = dayKey.split("-").map(Number);
   const probe = zonedTimeToUtc(zone, year, month, day, 12, 0);
+  const londonNoon = zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0);
   const place = placeLabel(legs, zone, probe);
 
   const { doses, carry } = liveAgenda({
@@ -88,8 +89,8 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const hero = open.find((dose) => dose.state === "due" || dose.state === "overdue") ?? open[0] ?? later[0] ?? null;
   const restOpen = hero ? open.filter((dose) => dose.key !== hero.key) : open;
   const laterRest = hero ? later.filter((dose) => dose.key !== hero.key) : later;
-  const dayOffset = offsetMinutes(zone, probe);
-  const homeOffset = offsetMinutes(HOME_TZ, probe);
+  const dayOffset = offsetMinutes(zone, londonNoon);
+  const homeOffset = offsetMinutes(HOME_TZ, londonNoon);
   const bodyOffset = dayOffset;
   const clocks = pairedClock(now, dayOffset - homeOffset);
 
@@ -113,7 +114,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
             <p className="text-xs text-subtle">{formatWhen(now, HOME_TZ, true)}</p>
             <h1 className="font-display text-2xl font-medium tracking-tight">{place}</h1>
           </div>
-          <p className="text-sm text-subtle tabular-nums">{ukOffsetLabel(zone, probe)}</p>
+          <p className="text-sm text-subtle tabular-nums">{ukOffsetLabel(zone, londonNoon)}</p>
         </div>
         <div className="grid grid-cols-2 gap-3 border-y border-line py-2">
           <Clock label="Here" time={clocks.here} sub={zoneAbbrev(probe, zone)} />
@@ -357,7 +358,7 @@ function DoseCard({
       <p className="mt-3 text-sm text-subtle">
         {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
       </p>
-      {!planning ? <p className="text-sm text-subtle tabular-nums">{when}</p> : null}
+      {!planning && dose.state !== "taken" && dose.state !== "skipped" ? <p className="text-sm text-subtle tabular-nums">{when}</p> : null}
       {gap ? <p className={`mt-2 text-sm ${gapExpected ? "text-subtle" : "text-danger"}`}>{gap}</p> : null}
       {!planning && dose.state !== "taken" && dose.state !== "skipped" ? (
         dose.state === "later" ? (
