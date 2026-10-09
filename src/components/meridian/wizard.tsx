@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
-import { holidayError, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
+import { holidayError, holidayLength, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
@@ -253,12 +253,17 @@ export function Wizard() {
               <input type="date" aria-label="Home" className={control} value={holidayEnd ?? ""} onChange={(event) => { setHoliday(holidayStart, event.target.value || null); setError(null); }} />
             </Label>
           </div>
+          {holidayStart && holidayEnd && !dateError ? (
+            <p className="text-sm text-muted">
+              This holiday is {holidayLength(holidayStart, holidayEnd)} days, {formatDayKey(holidayStart)} to {formatDayKey(holidayEnd)}.
+            </p>
+          ) : null}
           <Label text="Place">
             <select aria-label="Place" className={control} value={place} onChange={(event) => setPlace(event.target.value)}>
               <option value="">Choose</option>
               {PLACES.map((item) => (
                 <option key={item.place} value={item.place}>
-                  {item.place} {ukOffsetLabel(item.timeZone, from ? new Date(`${from}T12:00:00Z`) : new Date())}
+                  {item.place} {ukOffsetLabel(item.timeZone, wallToUtc(item.timeZone, `${from || holidayStart || ""}T12:00`) ?? new Date())}
                 </option>
               ))}
             </select>
@@ -272,7 +277,7 @@ export function Wizard() {
               {stops.map((stop) => (
                 <li key={`${stop.place}-${stop.from}`} className="flex items-center justify-between gap-2 text-sm">
                   <span className="min-w-0 truncate">
-                    {stop.place} {ukOffsetLabel(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", new Date(`${stop.from}T12:00:00Z`))} from {formatDayKey(stop.from)}
+                    {stop.place} {ukOffsetLabel(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", wallToUtc(PLACES.find((item) => item.place === stop.place)?.timeZone ?? "Europe/London", `${stop.from}T12:00`) ?? new Date())} from {formatDayKey(stop.from)}
                   </span>
                   <button type="button" className="min-h-11 shrink-0 text-subtle" onClick={() => setStops(stops.filter((item) => item !== stop))}>
                     Remove

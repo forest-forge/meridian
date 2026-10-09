@@ -4,12 +4,12 @@ import {
   liveAgenda,
   makeTargetAt,
   placeLabel,
-  zoneForDayKey,
+  scheduleZoneForDay,
   type Leg,
   type Medicine,
 } from "./schedule.ts";
 import type { Wallet } from "./store.ts";
-import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel } from "./time.ts";
+import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 import type { BodyClock } from "./schedule.ts";
 
 export function downloadTripSheet(args: {
@@ -71,15 +71,17 @@ function tripHtml(args: {
 
   const sections = days
     .map((day) => {
-      const zone = zoneForDayKey(day, args.legs, choice, HOME_TZ);
-      const noon = new Date(`${day}T12:00:00Z`);
+      const zone = scheduleZoneForDay(day, args.legs, choice);
+      const [year, month, date] = day.split("-").map(Number);
+      const noon = zonedTimeToUtc(zone, year, month, date, 12, 0);
       const place = placeLabel(args.legs, zone, noon);
       const offset = ukOffsetLabel(zone, noon);
+      const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
       const { doses } = liveAgenda({
         medicines: args.medicines,
         dayKey: day,
         labelZone: zone,
-        zoneForDay: () => zone,
+        zoneForDay: zones,
         now: new Date(`${day}T00:00:00Z`),
         leadMinutes: 0,
         logs: [],
@@ -157,12 +159,13 @@ function tripIcs(args: {
   const clock = args.clock;
   const events: string[] = [];
   for (let day = args.holidayStart; day <= args.holidayEnd; day = shiftDayKey(day, 1)) {
-    const zone = zoneForDayKey(day, args.legs, choice, HOME_TZ);
+    const zone = scheduleZoneForDay(day, args.legs, choice);
+    const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
     const { doses } = liveAgenda({
       medicines: args.medicines,
       dayKey: day,
       labelZone: zone,
-      zoneForDay: () => zone,
+      zoneForDay: zones,
       now: new Date(`${day}T00:00:00Z`),
       leadMinutes: 0,
       logs: [],

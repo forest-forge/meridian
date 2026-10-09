@@ -6,14 +6,13 @@ import {
   MODE_LABEL,
   WATER_LABEL,
   clockLine,
-  easeSummary,
+  easeNote,
   gapLabel,
   holidayError,
   liveAgenda,
   makeTargetAt,
   placeLabel,
-  projectOffset,
-  zoneForDayKey,
+  scheduleZoneForDay,
   zoneForInstant,
 } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
@@ -24,11 +23,10 @@ import {
   dayKeyInZone,
   formatDayKey,
   formatHm,
-  formatOffsetClock,
   formatWhen,
-  offsetLabel,
   offsetMinutes,
   shiftDayKey,
+  ukOffsetLabel,
   zoneAbbrev,
   zonedTimeToUtc,
 } from "@/lib/time";
@@ -51,23 +49,24 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const holidayEnd = useMeridian((s) => s.holidayEnd);
   const { now, phoneTz, planDay, setPlanDay } = shell;
 
-  const liveZone = zoneForInstant(legs, now, choice, phoneTz);
-  const liveDay = dayKeyInZone(now, liveZone);
-  const dayKey = planDay ?? liveDay;
-  const zone = planDay ? zoneForDayKey(dayKey, legs, choice, phoneTz) : liveZone;
-  const planning = dayKey !== liveDay;
+  const zoneForSchedule = (key: string) => scheduleZoneForDay(key, legs, choice);
+  const londonDay = dayKeyInZone(now, HOME_TZ);
+  const todayKey = dayKeyInZone(now, zoneForSchedule(londonDay));
+  const dayKey = planDay ?? todayKey;
+  const zone = zoneForSchedule(dayKey);
+  const planning = planDay != null && planDay !== todayKey;
   const targetAt = useMemo(() => makeTargetAt(legs, choice, phoneTz), [legs, choice, phoneTz]);
-  const bodyOffset = projectOffset(clock, shift, now, targetAt);
-  const liveOffset = offsetMinutes(liveZone, now);
-  const homeOffset = offsetMinutes(HOME_TZ, now);
-  const place = placeLabel(legs, liveZone, now);
+  const liveZone = zoneForInstant(legs, now, choice, phoneTz);
   const hasEase = medicines.some((medicine) => medicine.active && medicine.mode === "ease");
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const probe = zonedTimeToUtc(zone, year, month, day, 12, 0);
+  const place = placeLabel(legs, zone, probe);
 
   const { doses, carry } = liveAgenda({
     medicines,
     dayKey,
-    labelZone: planning ? zone : liveZone,
-    zoneForDay: (key) => (key === liveDay && !planDay ? liveZone : zoneForDayKey(key, legs, choice, phoneTz)),
+    labelZone: zone,
+    zoneForDay: zoneForSchedule,
     now,
     leadMinutes: lead,
     logs,
@@ -88,9 +87,9 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const hero = open.find((dose) => dose.state === "due" || dose.state === "overdue") ?? open[0] ?? later[0] ?? null;
   const restOpen = hero ? open.filter((dose) => dose.key !== hero.key) : open;
   const laterRest = hero ? later.filter((dose) => dose.key !== hero.key) : later;
-  const [year, month, day] = dayKey.split("-").map(Number);
-  const probe = zonedTimeToUtc(zone, year, month, day, 12, 0);
-  const planPlace = placeLabel(legs, zone, probe);
+  const dayOffset = offsetMinutes(zone, probe);
+  const homeOffset = offsetMinutes(HOME_TZ, probe);
+  const bodyOffset = dayOffset;
 
   function act(dose: DoseView, status: "taken" | "skipped" | "snoozed") {
     logDose({
@@ -112,19 +111,19 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
             <p className="text-xs text-subtle">{formatWhen(now, liveZone, true)}</p>
             <h1 className="font-display text-2xl font-medium tracking-tight">{place}</h1>
           </div>
-          <p className="text-sm text-subtle tabular-nums">{offsetLabel(liveOffset)}</p>
+          <p className="text-sm text-subtle tabular-nums">{ukOffsetLabel(zone, probe)}</p>
         </div>
         <div className="grid grid-cols-2 gap-3 border-y border-line py-2">
           <Clock label="Here" time={formatHm(now, liveZone)} sub={zoneAbbrev(now, liveZone)} />
           <Clock label="UK" time={formatHm(now, HOME_TZ)} sub={zoneAbbrev(now, HOME_TZ)} />
         </div>
         <p className="text-sm text-muted">
-          {aheadLabel(liveOffset, homeOffset)}
+          {aheadLabel(dayOffset, homeOffset)}
           {holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd)
             ? ` · Away ${formatDayKey(holidayStart)} to ${formatDayKey(holidayEnd)}`
             : ""}
         </p>
-        {hasEase ? <p className="text-sm text-muted">{easeSummary(bodyOffset, liveOffset, shift, place)} Body clock {formatOffsetClock(now, bodyOffset)}.</p> : null}
+        {hasEase ? <p className="text-sm text-muted">{easeNote(dayKey, holidayStart, holidayEnd, shift, zoneForSchedule, place)}</p> : null}
       </header>
 
       {sampleNote ? (
@@ -143,7 +142,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
           Prev
         </Button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="truncate text-sm font-medium">{planning ? `${formatWhen(probe, zone, true)} · ${planPlace}` : "Today"}</p>
+          <p className="truncate text-sm font-medium">{planning ? `${formatWhen(probe, zone, true)} · ${place}` : "Today"}</p>
           <input
             type="date"
             aria-label="Plan a day"
@@ -318,7 +317,7 @@ function DoseCard({
                     : "Later";
   const urgent = dose.state === "due" || dose.state === "overdue";
   const FoodIcon = dose.food === "empty" ? UtensilsCrossed : Utensils;
-  const gap = gapLabel(dose.gapHours);
+  const gap = gapLabel(dose.gapHours, useMeridian.getState().shiftMinutesPerDay);
   const when =
     dose.state === "snoozed" && dose.snoozeUntil
       ? `back ${countdown(new Date(dose.snoozeUntil), now)}`

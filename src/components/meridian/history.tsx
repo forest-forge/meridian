@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { liveAgenda, makeTargetAt, zoneForDayKey, zoneForInstant } from "@/lib/schedule";
+import { liveAgenda, makeTargetAt, scheduleZoneForDay } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, dayKeyInZone, formatHm, formatWhen, shiftDayKey } from "@/lib/time";
 import { useShell } from "./shell";
@@ -26,8 +26,8 @@ export function History() {
   const holidayStart = useMeridian((s) => s.holidayStart);
   const holidayEnd = useMeridian((s) => s.holidayEnd);
   const { now, phoneTz } = useShell();
-  const zone = zoneForInstant(legs, now, choice, phoneTz);
-  const today = dayKeyInZone(now, zone);
+  const zones = (key: string) => scheduleZoneForDay(key, legs, choice);
+  const today = dayKeyInZone(now, zones(dayKeyInZone(now, HOME_TZ)));
   const targetAt = useMemo(() => makeTargetAt(legs, choice, phoneTz), [legs, choice, phoneTz]);
 
   const days = Array.from({ length: 10 }, (_, index) => shiftDayKey(today, -index));
@@ -35,8 +35,8 @@ export function History() {
     const { doses } = liveAgenda({
       medicines,
       dayKey,
-      labelZone: zoneForDayKey(dayKey, legs, choice, phoneTz),
-      zoneForDay: (key) => zoneForDayKey(key, legs, choice, phoneTz),
+      labelZone: scheduleZoneForDay(dayKey, legs, choice),
+      zoneForDay: (key) => scheduleZoneForDay(key, legs, choice),
       now,
       leadMinutes: lead,
       logs,

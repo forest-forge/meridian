@@ -4,6 +4,7 @@ import {
   cityFromZone,
   dayKeyInZone,
   formatHm,
+  isTimeZone,
   localDayBounds,
   offsetMinutes,
   partsInZone,
@@ -113,33 +114,6 @@ export function normaliseHhmm(value: string): string | null {
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 }
 
-export function projectOffset(
-  clock: BodyClock,
-  shiftMinutesPerDay: number,
-  at: Date,
-  targetAt: TargetFn,
-): number {
-  const start = new Date(clock.asOf).getTime();
-  const end = at.getTime();
-  if (!Number.isFinite(start) || end <= start) return clock.offsetMinutes;
-  let offset = clock.offsetMinutes;
-  let cursor = start;
-  let guard = 0;
-  const step = Math.max(1, shiftMinutesPerDay);
-  while (cursor < end && guard < 400) {
-    const next = Math.min(cursor + DAY_MS, end);
-    const fraction = (next - cursor) / DAY_MS;
-    const target = targetAt(new Date(next));
-    const budget = fraction * step;
-    const diff = target - offset;
-    const move = Math.abs(diff) <= budget ? diff : Math.sign(diff) * budget;
-    offset += move;
-    cursor = next;
-    guard += 1;
-  }
-  return Math.round(offset);
-}
-
 export function legRange(leg: Leg): { start: number; end: number } | null {
   const start = wallToUtc(leg.timeZone, leg.arrive);
   const end = wallToUtc(leg.timeZone, leg.depart);
@@ -180,16 +154,37 @@ export function zoneForInstant(
   return previous?.item.timeZone ?? phoneTz ?? HOME_TZ;
 }
 
+export function stopZoneForDay(dayKey: string, legs: Leg[]): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  if (!year || !month || !day) return HOME_TZ;
+  let zone = HOME_TZ;
+  for (const leg of sortedLegs(legs)) {
+    if (!isTimeZone(leg.timeZone)) continue;
+    const noon = zonedTimeToUtc(leg.timeZone, year, month, day, 12, 0);
+    const range = legRange(leg);
+    if (range && noon.getTime() >= range.start && noon.getTime() < range.end) {
+      zone = leg.timeZone;
+      continue;
+    }
+    // An evening arrival is still that stop, even though noon was before landing.
+    if (leg.arrive.slice(0, 10) === dayKey) zone = leg.timeZone;
+  }
+  return zone;
+}
+
+/** Dose zone for a calendar day. A locked zone is kept. The phone is never used. */
+export function scheduleZoneForDay(dayKey: string, legs: Leg[], choice: ZoneChoice): string {
+  if (choice.source === "locked" && choice.timeZone && isTimeZone(choice.timeZone)) return choice.timeZone;
+  return stopZoneForDay(dayKey, legs);
+}
+
 export function zoneForDayKey(
   dayKey: string,
   legs: Leg[],
   choice: ZoneChoice,
-  phoneTz: string,
+  _phoneTz: string,
 ): string {
-  const [year, month, day] = dayKey.split("-").map(Number);
-  if (!year || !month || !day) return phoneTz || HOME_TZ;
-  const noon = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  return zoneForInstant(legs, noon, choice, phoneTz);
+  return scheduleZoneForDay(dayKey, legs, choice);
 }
 
 export function tripBounds(legs: Leg[]): { start: number; end: number } | null {
@@ -289,39 +284,29 @@ type Slot = {
   movedFrom: string | null;
 };
 
-function inCourse(
-  medicine: Medicine,
-  dayKey: string,
-  holidayStart: string | null,
-  holidayEnd: string | null,
-): boolean {
-  const holidayOk = holidayError(holidayStart, holidayEnd) === null;
-  const start = medicine.startDate ?? (holidayOk ? holidayStart : null);
-  const end = medicine.endDate ?? (holidayOk ? holidayEnd : null);
-  if (start && dayKey < start) return false;
-  if (end && dayKey > end) return false;
+function inCourse(medicine: Medicine, dayKey: string): boolean {
+  if (medicine.startDate && dayKey < medicine.startDate) return false;
+  if (medicine.endDate && dayKey > medicine.endDate) return false;
   return true;
+}
+
+function onHoliday(dayKey: string, holidayStart: string | null, holidayEnd: string | null): boolean {
+  return Boolean(holidayStart && holidayEnd && holidayError(holidayStart, holidayEnd) === null && dayKey >= holidayStart && dayKey <= holidayEnd);
 }
 
 function slotsForDay(
   medicines: Medicine[],
   dayKey: string,
-  zone: string,
-  clock: BodyClock,
+  zoneForDay: (dayKey: string) => string,
   shiftMinutesPerDay: number,
-  targetAt: TargetFn,
   holidayStart: string | null,
   holidayEnd: string | null,
 ): Slot[] {
-  const bounds = localDayBounds(dayKey, zone);
-  if (!bounds) return [];
-  const { start, end } = bounds;
-  const mid = new Date((start.getTime() + end.getTime()) / 2);
-  const bodyOffset = projectOffset(clock, shiftMinutesPerDay, mid, targetAt);
+  const zone = zoneForDay(dayKey);
   const out: Slot[] = [];
 
   for (const medicine of medicines) {
-    if (!medicine.active || !inCourse(medicine, dayKey, holidayStart, holidayEnd)) continue;
+    if (!medicine.active || !inCourse(medicine, dayKey)) continue;
     for (const raw of medicine.times) {
       const hhmm = normaliseHhmm(raw);
       const parsed = hhmm ? parseHhmm(hhmm) : null;
@@ -332,9 +317,10 @@ function slotsForDay(
         parsed.minute,
         dayKey,
         zone,
-        start,
-        end,
-        bodyOffset,
+        shiftMinutesPerDay,
+        holidayStart,
+        holidayEnd,
+        zoneForDay,
       );
       for (const at of instants) {
         const woken = medicine.holdTime ? { at, movedFrom: null } : wakeAdjusted(at, zone);
@@ -346,46 +332,74 @@ function slotsForDay(
   return out;
 }
 
+function ukInstants(hour: number, minute: number, dayKey: string, zone: string): Date[] {
+  const bounds = localDayBounds(dayKey, zone);
+  if (!bounds) return [];
+  const [year, month, day] = dayKeyInZone(bounds.start, HOME_TZ).split("-").map(Number);
+  const found: Date[] = [];
+  for (const delta of [-1, 0, 1, 2]) {
+    const date = new Date(Date.UTC(year, month - 1, day + delta));
+    const at = zonedTimeToUtc(HOME_TZ, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), hour, minute);
+    if (at >= bounds.start && at < bounds.end) found.push(at);
+  }
+  return found;
+}
+
+function easeBody(
+  dayKey: string,
+  hour: number,
+  minute: number,
+  holidayStart: string,
+  step: number,
+  zoneForDay: (dayKey: string) => string,
+): number {
+  const ukInstant = (key: string) => {
+    const [year, month, day] = key.split("-").map(Number);
+    return zonedTimeToUtc(HOME_TZ, year, month, day, hour, minute);
+  };
+  let body = offsetMinutes(HOME_TZ, ukInstant(shiftDayKey(holidayStart, -1)));
+  for (let cursor = holidayStart; cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
+    const [year, month, day] = cursor.split("-").map(Number);
+    const zone = zoneForDay(cursor) || HOME_TZ;
+    const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, hour, minute));
+    const diff = target - body;
+    const move = Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
+    body += move;
+  }
+  return body;
+}
+
+function easeInstant(
+  dayKey: string,
+  hour: number,
+  minute: number,
+  holidayStart: string,
+  step: number,
+  zoneForDay: (dayKey: string) => string,
+): Date {
+  const body = easeBody(dayKey, hour, minute, holidayStart, step, zoneForDay);
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute) - body * 60_000);
+}
+
 function instantsFor(
   mode: ClockMode,
   hour: number,
   minute: number,
   dayKey: string,
   zone: string,
-  start: Date,
-  end: Date,
-  bodyOffset: number,
+  shiftMinutesPerDay: number,
+  holidayStart: string | null,
+  holidayEnd: string | null,
+  zoneForDay: (dayKey: string) => string,
 ): Date[] {
+  const away = onHoliday(dayKey, holidayStart, holidayEnd);
+  if (!away || mode === "uk") return ukInstants(hour, minute, dayKey, zone);
   if (mode === "local") {
     const [year, month, day] = dayKey.split("-").map(Number);
     return [zonedTimeToUtc(zone, year, month, day, hour, minute)];
   }
-  if (mode === "uk") {
-    const [year, month, day] = dayKeyInZone(start, HOME_TZ).split("-").map(Number);
-    const found: Date[] = [];
-    for (const delta of [-1, 0, 1, 2]) {
-      const y = year;
-      const date = new Date(Date.UTC(y, month - 1, day + delta));
-      const at = zonedTimeToUtc(
-        HOME_TZ,
-        date.getUTCFullYear(),
-        date.getUTCMonth() + 1,
-        date.getUTCDate(),
-        hour,
-        minute,
-      );
-      if (at >= start && at < end) found.push(at);
-    }
-    return found;
-  }
-  const wall = new Date(start.getTime() + bodyOffset * 60_000);
-  const found: Date[] = [];
-  for (const delta of [-1, 0, 1, 2]) {
-    const date = new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate() + delta));
-    const at = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hour, minute) - bodyOffset * 60_000);
-    if (at >= start && at < end) found.push(at);
-  }
-  return dedupeInstants(found);
+  return [easeInstant(dayKey, hour, minute, holidayStart!, Math.max(1, shiftMinutesPerDay), zoneForDay)];
 }
 
 function wakeAdjusted(at: Date, zone: string): { at: Date; movedFrom: string | null } {
@@ -395,18 +409,6 @@ function wakeAdjusted(at: Date, zone: string): { at: Date; movedFrom: string | n
     at: zonedTimeToUtc(zone, parts.year, parts.month, parts.day, 6, 0),
     movedFrom: formatHm(at, zone),
   };
-}
-
-function dedupeInstants(dates: Date[]): Date[] {
-  const seen = new Set<number>();
-  const out: Date[] = [];
-  for (const date of dates) {
-    const bucket = Math.round(date.getTime() / 60_000);
-    if (seen.has(bucket)) continue;
-    seen.add(bucket);
-    out.push(date);
-  }
-  return out;
 }
 
 function decorate(
@@ -463,25 +465,16 @@ export function liveAgenda(args: {
   const holidayStart = args.holidayStart ?? null;
   const holidayEnd = args.holidayEnd ?? null;
   const slots = (key: string) =>
-    slotsForDay(
-      args.medicines,
-      key,
-      args.zoneForDay(key),
-      args.clock,
-      args.shiftMinutesPerDay,
-      args.targetAt,
-      holidayStart,
-      holidayEnd,
-    );
+    slotsForDay(args.medicines, key, args.zoneForDay, args.shiftMinutesPerDay, holidayStart, holidayEnd);
   const todayKey = args.dayKey;
   const prevKey = shiftDayKey(todayKey, -1);
   const beforeKey = shiftDayKey(todayKey, -2);
-  const doses = decorate(slots(todayKey), slots(prevKey), args.labelZone, args.now, args.leadMinutes, logMap);
+  const doses = decorate(slots(todayKey), slots(prevKey), args.zoneForDay(todayKey), args.now, args.leadMinutes, logMap);
   if (!args.carryover) return { doses, carry: [] };
   const yesterday = decorate(
     slots(prevKey),
     slots(beforeKey),
-    args.labelZone,
+    args.zoneForDay(prevKey),
     args.now,
     args.leadMinutes,
     logMap,
@@ -496,10 +489,12 @@ export function makeTargetAt(legs: Leg[], choice: ZoneChoice, phoneTz: string): 
   return (instant: Date) => offsetMinutes(zoneForInstant(legs, instant, choice, phoneTz), instant);
 }
 
-export function gapLabel(hours: number | null): string | null {
+export function gapLabel(hours: number | null, stepMinutes = 60): string | null {
   if (hours == null || !Number.isFinite(hours)) return null;
   const mins = Math.round(hours * 60);
-  if (Math.abs(mins - 24 * 60) < 45) return null;
+  const day = 24 * 60;
+  const step = Math.max(0, Math.round(stepMinutes));
+  if (mins === day || mins === day + step || mins === day - step) return null;
   const h = Math.floor(Math.abs(mins) / 60);
   const m = Math.abs(mins) % 60;
   const text = m === 0 ? `${h} hours` : `${h} h ${m} min`;
@@ -525,11 +520,38 @@ export const MODE_LABEL: Record<ClockMode, string> = {
   ease: "Ease across",
 };
 
-export function clockLine(dose: DoseView, zoneOffset: number, bodyOffset: number): string {
+export function clockLine(dose: DoseView, _zoneOffset?: number, _bodyOffset?: number): string {
+  if (dose.mode === "ease") {
+    if (dose.localLabel === dose.hhmm && dose.ukLabel !== dose.hhmm) {
+      return `${dose.localLabel} local · eased onto this time zone`;
+    }
+    if (dose.ukLabel === dose.localLabel || dose.ukLabel === dose.hhmm) {
+      return "UK time, nothing is shifting";
+    }
+    return `${dose.localLabel} here · ${dose.ukLabel} UK, shifting`;
+  }
   if (dose.mode === "uk") return dose.ukLabel === dose.localLabel ? "Same time as home" : `Taken at ${dose.ukLabel} UK`;
-  if (dose.mode === "local") return `${dose.localLabel} local · ${dose.ukLabel} UK`;
-  if (zoneOffset === bodyOffset) return `${dose.localLabel} local · eased onto this time zone`;
-  return `${dose.localLabel} here · ${dose.ukLabel} UK, shifting`;
+  return `${dose.localLabel} local · ${dose.ukLabel} UK`;
+}
+
+export function easeNote(
+  dayKey: string,
+  holidayStart: string | null,
+  holidayEnd: string | null,
+  shiftMinutesPerDay: number,
+  zoneForDay: (dayKey: string) => string,
+  place: string,
+): string {
+  if (!holidayStart || !holidayEnd || dayKey < holidayStart) {
+    return "Nothing is shifting. Doses stay on UK time until you leave.";
+  }
+  if (dayKey > holidayEnd) return "Doses are back on UK time.";
+  const step = Math.max(1, shiftMinutesPerDay);
+  const body = easeBody(dayKey, 12, 0, holidayStart, step, zoneForDay);
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const zone = zoneForDay(dayKey) || HOME_TZ;
+  const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, 12, 0));
+  return easeSummary(body, target, step, place);
 }
 
 export function easeSummary(

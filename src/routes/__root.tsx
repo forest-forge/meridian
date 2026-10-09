@@ -16,7 +16,8 @@ export const Route = createRootRoute({
         content:
           "Medicine reminders for a UK holiday of up to three months, across time zones. With food, with water, on time.",
       },
-      { name: "theme-color", content: "#f3f1ec" },
+      { name: "theme-color", content: "#1f4f4a" },
+      { name: "apple-mobile-web-app-title", content: APP_NAME },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

@@ -3,19 +3,19 @@ import { describe, it } from "node:test";
 import { buildSample } from "./sample.ts";
 import {
   clockLine,
-  easeSummary,
+  easeNote,
   holidayError,
   holidayLength,
   legAt,
   liveAgenda,
-  makeTargetAt,
   placeLabel,
-  projectOffset,
+  scheduleZoneForDay,
   tripSpanDays,
   validateLegs,
   zoneForInstant,
+  type Medicine,
 } from "./schedule.ts";
-import { HOME_TZ, offsetMinutes, zonedTimeToUtc } from "./time.ts";
+import { HOME_TZ, formatDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 
 describe("time zones", () => {
   it("converts a UK morning in BST to UTC", () => {
@@ -29,13 +29,109 @@ describe("time zones", () => {
   });
 });
 
-describe("body clock", () => {
-  it("walks toward the destination and then holds", () => {
-    const clock = { offsetMinutes: 60, asOf: "2026-09-01T00:00:00.000Z" };
-    const target = () => 480;
-    assert.equal(projectOffset(clock, 60, new Date("2026-09-04T00:00:00.000Z"), target), 240);
-    assert.equal(projectOffset(clock, 60, new Date("2026-09-04T12:00:00.000Z"), target), 270);
-    assert.equal(projectOffset(clock, 60, new Date("2026-09-20T00:00:00.000Z"), target), 480);
+describe("offsets from the UK", () => {
+  it("uses the day, not a fixed GMT label", () => {
+    const summer = zonedTimeToUtc("Europe/Paris", 2026, 7, 15, 12, 0);
+    const winter = zonedTimeToUtc("Europe/Paris", 2026, 11, 3, 12, 0);
+    assert.equal(ukOffsetLabel("Europe/Paris", summer), "+1");
+    assert.equal(ukOffsetLabel("Europe/Paris", winter), "+1");
+    const fixed = "Africa/Lagos";
+    assert.equal(ukOffsetLabel(fixed, zonedTimeToUtc(fixed, 2026, 7, 15, 12, 0)), "+0");
+    assert.equal(ukOffsetLabel(fixed, zonedTimeToUtc(fixed, 2026, 11, 3, 12, 0)), "+1");
+  });
+
+  it("counts 2 Nov to 16 Nov as 15 days and writes pack dates in words", () => {
+    assert.equal(holidayLength("2026-11-02", "2026-11-16"), 15);
+    assert.equal(formatDayKey("2026-11-29"), "29 Nov 2026");
+  });
+});
+
+describe("ease from the leave date", () => {
+  const zone = "Europe/Paris";
+  const legs = [
+    { id: "paris", place: "Paris", timeZone: zone, arrive: "2026-11-02T18:00", depart: "2026-11-16T18:00" },
+  ];
+  const zoneForDay = (key: string) => scheduleZoneForDay(key, legs, { source: "journey" });
+  const medicine: Medicine = {
+    id: "ramipril",
+    name: "Ramipril",
+    dose: "5 mg",
+    times: ["08:00"],
+    food: "either",
+    water: "either",
+    notes: "",
+    mode: "ease",
+    active: true,
+    startDate: null,
+    endDate: null,
+  };
+
+  function day(dayKey: string, mode: Medicine["mode"] = "ease", step = 60) {
+    return liveAgenda({
+      medicines: [{ ...medicine, mode }],
+      dayKey,
+      labelZone: zone,
+      zoneForDay,
+      now: new Date("2026-10-09T08:00:00.000Z"),
+      leadMinutes: 0,
+      logs: [],
+      clock: { offsetMinutes: 0, asOf: "2026-09-01T00:00:00.000Z" },
+      shiftMinutesPerDay: step,
+      targetAt: () => 0,
+      carryover: true,
+      holidayStart: "2026-11-02",
+      holidayEnd: "2026-11-16",
+    });
+  }
+
+  it("stays on UK time before the trip, even if the journey was saved earlier", () => {
+    const dose = day("2026-10-09").doses.find((item) => item.medicineId === "ramipril");
+    assert.ok(dose);
+    assert.equal(dose.ukLabel, "08:00");
+    assert.equal(dose.localLabel, "08:00");
+    assert.match(clockLine(dose), /nothing is shifting/);
+    const note = easeNote("2026-10-09", "2026-11-02", "2026-11-16", 60, zoneForDay, "United Kingdom");
+    assert.match(note, /Nothing is shifting/);
+    assert.doesNotMatch(note, /behind/);
+  });
+
+  it("is 08:00 in Paris and 07:00 in London on 3 Nov, 24 hours after the previous dose", () => {
+    assert.equal(zoneForDay("2026-11-02"), "Europe/Paris");
+    const dose = day("2026-11-03").doses.find((item) => item.medicineId === "ramipril");
+    assert.ok(dose);
+    assert.equal(dose.localLabel, "08:00");
+    assert.equal(dose.ukLabel, "07:00");
+    assert.equal(dose.gapHours, 24);
+    assert.match(clockLine(dose), /eased onto this time zone/);
+  });
+
+  it("keeps UK doses on London time and jumps the whole dose on arrival", () => {
+    const stayed = day("2026-11-03", "uk").doses[0];
+    assert.equal(stayed?.ukLabel, "08:00");
+    assert.equal(stayed?.localLabel, "09:00");
+    const jumped = day("2026-11-02", "local").doses[0];
+    assert.equal(jumped?.localLabel, "08:00");
+    assert.equal(jumped?.ukLabel, "07:00");
+    assert.equal(jumped?.gapHours, 23);
+  });
+
+  it("moves 30 minutes a day, so the gap is 24 hours minus that step", () => {
+    const first = day("2026-11-02", "ease", 30).doses[0];
+    const second = day("2026-11-03", "ease", 30).doses[0];
+    const third = day("2026-11-04", "ease", 30).doses[0];
+    assert.equal(first?.gapHours, 23.5);
+    assert.equal(second?.gapHours, 23.5);
+    assert.equal(third?.localLabel, "08:00");
+    assert.equal(third?.ukLabel, "07:00");
+    assert.equal(third?.gapHours, 24);
+  });
+
+  it("is back on UK time after the home date", () => {
+    const dose = day("2026-11-17").doses[0];
+    assert.equal(dose?.ukLabel, "08:00");
+    assert.equal(dose?.localLabel, "08:00");
+    assert.match(clockLine(dose!), /nothing is shifting/);
+    assert.match(easeNote("2026-11-17", "2026-11-02", "2026-11-16", 60, zoneForDay, "Paris"), /back on UK time/);
   });
 });
 
@@ -57,10 +153,6 @@ describe("sample holiday", () => {
 
   it("places UK, local, and eased doses on the Singapore day", () => {
     const zone = "Asia/Singapore";
-    const targetAt = makeTargetAt(sample.legs, sample.zoneChoice, "UTC");
-    const body = projectOffset(sample.bodyClock, 60, now, targetAt);
-    assert.equal(body, offsetMinutes(HOME_TZ, now));
-    assert.equal(body, 60);
     const { doses, carry } = liveAgenda({
       medicines: sample.medicines,
       dayKey: "2026-10-09",
@@ -71,7 +163,7 @@ describe("sample holiday", () => {
       logs: [],
       clock: sample.bodyClock,
       shiftMinutesPerDay: 60,
-      targetAt,
+      targetAt: () => 0,
       carryover: true,
       holidayStart: sample.holidayStart,
       holidayEnd: sample.holidayEnd,
@@ -84,10 +176,8 @@ describe("sample holiday", () => {
     assert.equal(breakfast?.localLabel, "08:00");
     const empty = doses.find((dose) => dose.medicineId === "med-empty");
     assert.equal(empty?.hhmm, "07:00");
-    assert.equal(empty?.localLabel, "14:00");
-    assert.equal(empty?.ukLabel, "07:00");
-    assert.match(clockLine(empty!, offsetMinutes(zone, now), body), /07:00 UK, shifting/);
-    assert.match(easeSummary(body, offsetMinutes(zone, now), 60, "Singapore"), /7 hours behind Singapore/);
+    assert.equal(empty?.localLabel, "07:00");
+    assert.match(clockLine(empty!), /eased onto this time zone/);
     const supper = carry.find((dose) => dose.hhmm === "19:00");
     assert.equal(supper?.state, "overdue");
   });
@@ -128,7 +218,44 @@ describe("sample holiday", () => {
     assert.equal(doses[0].localLabel, "06:00");
   });
 
-  it("skips doses outside the holiday dates", () => {
+  it("leaves a held dose in the night", () => {
+    const zone = "Asia/Singapore";
+    const { doses } = liveAgenda({
+      medicines: [
+        {
+          id: "night",
+          name: "Evening",
+          dose: "1",
+          times: ["22:00"],
+          food: "either",
+          water: "either",
+          notes: "",
+          mode: "uk",
+          active: true,
+          startDate: null,
+          endDate: null,
+          holdTime: true,
+        },
+      ],
+      dayKey: "2026-10-10",
+      labelZone: zone,
+      zoneForDay: () => zone,
+      now: new Date("2026-10-09T12:00:00.000Z"),
+      leadMinutes: 15,
+      logs: [],
+      clock: { offsetMinutes: 60, asOf: "2026-10-01T00:00:00.000Z" },
+      shiftMinutesPerDay: 60,
+      targetAt: () => 60,
+      carryover: false,
+      holidayStart: "2026-10-01",
+      holidayEnd: "2026-10-20",
+    });
+    assert.equal(doses.length, 1);
+    assert.equal(doses[0].movedFrom, null);
+    assert.equal(doses[0].localLabel, "05:00");
+  });
+
+  it("keeps doses on UK time outside the holiday dates", () => {
     const zone = "Asia/Singapore";
     const { doses } = liveAgenda({
       medicines: sample.medicines,
@@ -140,11 +267,20 @@ describe("sample holiday", () => {
       logs: [],
       clock: sample.bodyClock,
       shiftMinutesPerDay: 60,
-      targetAt: makeTargetAt(sample.legs, sample.zoneChoice, "UTC"),
+      targetAt: () => 0,
       carryover: false,
       holidayStart: "2026-11-01",
       holidayEnd: "2026-11-20",
     });
-    assert.equal(doses.length, 0);
+    const morning = doses.find((dose) => dose.medicineId === "med-morning");
+    assert.ok(morning);
+    assert.equal(morning.ukLabel, "08:00");
+    assert.equal(morning.localLabel, "15:00");
+    const eased = doses.find((dose) => dose.medicineId === "med-empty");
+    assert.equal(eased?.ukLabel, "07:00");
+    assert.match(clockLine(eased!), /nothing is shifting/);
+    const note = easeNote("2026-10-09", "2026-11-01", "2026-11-20", 60, () => "Europe/London", "United Kingdom");
+    assert.match(note, /Nothing is shifting/);
+    assert.doesNotMatch(note, /behind/);
   });
 });

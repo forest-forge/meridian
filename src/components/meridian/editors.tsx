@@ -3,7 +3,6 @@ import { PLACES } from "@/lib/places";
 import {
   holidayError,
   holidayLength,
-  zoneForInstant,
   type ClockMode,
   type FoodRule,
   type Leg,
@@ -12,7 +11,7 @@ import {
   type ZoneChoice,
 } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { allTimeZones, cityFromZone, formatDayKey, formatWallInput, offsetLabel, offsetMinutes } from "@/lib/time";
+import { allTimeZones, cityFromZone, formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
 import { Button, Choice, Field, Note, Sheet, TextArea, TextInput } from "./ui";
 
 function blankMedicine(): Medicine {
@@ -269,7 +268,7 @@ export function HolidayDates() {
         <p className="text-sm text-danger">{error}</p>
       ) : days ? (
         <p className="text-sm text-muted">
-          {days} day{days === 1 ? "" : "s"}, {formatDayKey(start!)} to {formatDayKey(end!)}. Reminders run on these dates.
+          {days} day{days === 1 ? "" : "s"}, {formatDayKey(start!)} to {formatDayKey(end!)}. Before you leave and after you are home, doses stay on UK time.
         </p>
       ) : (
         <p className="text-sm text-muted">Leave these blank to be reminded every day.</p>
@@ -373,7 +372,12 @@ export function LegEditor({
             onClick={() => setDraft({ ...draft, timeZone: zone })}
           >
             <span className="truncate">{zone.replace(/_/g, " ")}</span>
-            <span className="shrink-0 text-subtle tabular-nums">{offsetLabel(offsetMinutes(zone, now))}</span>
+            <span className="shrink-0 text-subtle tabular-nums">
+              {ukOffsetLabel(
+                zone,
+                wallToUtc(zone, `${draft.arrive.slice(0, 10)}T12:00`) ?? now,
+              )}
+            </span>
           </button>
         ))}
       </div>
@@ -416,7 +420,6 @@ export function LegEditor({
 
 export function SettingsSheet({
   now,
-  phoneTz,
   onClose,
 }: {
   now: Date;
@@ -431,10 +434,6 @@ export function SettingsSheet({
   const setSound = useMeridian((s) => s.setSound);
   const loadSample = useMeridian((s) => s.loadSample);
   const clearAll = useMeridian((s) => s.clearAll);
-  const snapBody = useMeridian((s) => s.snapBody);
-  const startFromUk = useMeridian((s) => s.startFromUk);
-  const zoneChoice = useMeridian((s) => s.zoneChoice);
-  const legs = useMeridian((s) => s.legs);
   const [perm, setPerm] = useState<string>("default");
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
@@ -443,8 +442,6 @@ export function SettingsSheet({
     if (typeof Notification === "undefined") setPerm("unsupported");
     else setPerm(Notification.permission);
   }, []);
-
-  const liveZone = zoneForInstant(legs, now, zoneChoice, phoneTz);
 
   return (
     <Sheet title="Reminders" onClose={onClose}>
@@ -488,14 +485,9 @@ export function SettingsSheet({
           Allow browser alerts
         </Button>
       )}
-      <div className="grid gap-2">
-        <Button variant="quiet" onClick={() => startFromUk(now)}>
-          Start eased doses from UK time
-        </Button>
-        <Button variant="quiet" onClick={() => snapBody(offsetMinutes(liveZone, now), now)}>
-          Snap eased doses to local time
-        </Button>
-      </div>
+      <p className="text-sm text-muted">
+        Ease starts from UK time on the day you leave, then moves by the step above once a day. Use Jump on a medicine if the whole dose should switch on arrival.
+      </p>
       {confirmSample ? (
         <div className="grid grid-cols-2 gap-2">
           <Button

@@ -1,6 +1,6 @@
-import { legRange, placeLabel, sortedLegs, tripSpanDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
+import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { HOME_TZ, cityFromZone, formatShortWhen, offsetLabel, offsetMinutes, wallToUtc } from "@/lib/time";
+import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, ukOffsetLabel, wallToUtc, zonedTimeToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
@@ -11,16 +11,19 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
   const choice = useMeridian((s) => s.zoneChoice);
   const setZoneChoice = useMeridian((s) => s.setZoneChoice);
   const { now, phoneTz } = useShell();
-  const ordered = sortedLegs(legs);
-  const zone = zoneForInstant(legs, now, choice, phoneTz);
-  const place = placeLabel(legs, zone, now);
-  const days = tripSpanDays(legs);
   const holidayStart = useMeridian((s) => s.holidayStart);
   const holidayEnd = useMeridian((s) => s.holidayEnd);
   const medicines = useMeridian((s) => s.medicines);
   const wallet = useMeridian((s) => s.wallet);
   const clock = useMeridian((s) => s.bodyClock);
   const shift = useMeridian((s) => s.shiftMinutesPerDay);
+  const ordered = sortedLegs(legs);
+  const zone = zoneForInstant(legs, now, choice, phoneTz);
+  const londonDay = dayKeyInZone(now, HOME_TZ);
+  const doseZone = scheduleZoneForDay(londonDay, legs, choice);
+  const place = placeLabel(legs, doseZone, now);
+  const holidayDays =
+    holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd) ? holidayLength(holidayStart, holidayEnd) : 0;
 
   function download() {
     if (!holidayStart || !holidayEnd) return;
@@ -44,7 +47,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
           <Button variant="quiet" onClick={download}>Download printable trip</Button>
           <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
           {medicines.filter((medicine) => runOutDay(medicine, holidayStart)).map((medicine) => (
-            <p key={medicine.id} className="text-sm text-subtle">{medicine.name} runs out {runOutDay(medicine, holidayStart)}</p>
+            <p key={medicine.id} className="text-sm text-subtle">{medicine.name} runs out {formatDayKey(runOutDay(medicine, holidayStart)!)}</p>
           ))}
         </div>
       ) : null}
@@ -85,8 +88,8 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
       ) : null}
 
       <p className="text-sm text-muted">
-        Right now that is {place} ({offsetLabel(offsetMinutes(zone, now))}).
-        {days > 0 ? ` This holiday is ${days} day${days === 1 ? "" : "s"}.` : ""}
+        Right now that is {place} ({ukOffsetLabel(doseZone, now)}).
+        {holidayDays > 0 ? ` This holiday is ${holidayDays} day${holidayDays === 1 ? "" : "s"}.` : ""}
       </p>
 
       {ordered.length === 0 ? (
@@ -99,6 +102,8 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
             const range = legRange(leg);
             const here = range ? now.getTime() >= range.start && now.getTime() < range.end : false;
             const length = range ? Math.max(1, Math.round((range.end - range.start) / 86_400_000)) : 0;
+            const [year, month, day] = leg.arrive.slice(0, 10).split("-").map(Number);
+            const dayProbe = year && month && day ? zonedTimeToUtc(leg.timeZone, year, month, day, 12, 0) : arrive ?? now;
             return (
               <li key={leg.id}>
                 <button
@@ -111,7 +116,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
                     <span className="text-sm text-subtle">{here ? "Here now" : `${length} day${length === 1 ? "" : "s"}`}</span>
                   </div>
                   <p className="mt-1 text-sm text-muted">
-                    {cityFromZone(leg.timeZone)} · {offsetLabel(offsetMinutes(leg.timeZone, arrive ?? now))}
+                    {cityFromZone(leg.timeZone)} · {ukOffsetLabel(leg.timeZone, dayProbe)}
                   </p>
                   <p className="mt-2 text-sm text-subtle tabular-nums">
                     {arrive ? formatShortWhen(arrive, leg.timeZone) : leg.arrive}

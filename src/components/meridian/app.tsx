@@ -1,9 +1,9 @@
 import { Clock, Pill, Plane, Settings, ScrollText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { chime, unlockAudio } from "@/lib/chime";
-import { FOOD_LABEL, WATER_LABEL, liveAgenda, makeTargetAt, zoneForDayKey, zoneForInstant } from "@/lib/schedule";
+import { FOOD_LABEL, WATER_LABEL, liveAgenda, makeTargetAt, scheduleZoneForDay } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { dayKeyInZone } from "@/lib/time";
+import { HOME_TZ, dayKeyInZone } from "@/lib/time";
 import { History } from "./history";
 import { Journey } from "./journey";
 import { Kit } from "./kit";
@@ -98,14 +98,15 @@ function Ready() {
 
   useEffect(() => {
     const state = useMeridian.getState();
-    const zone = zoneForInstant(state.legs, now, state.zoneChoice, phoneTz);
-    const dayKey = dayKeyInZone(now, zone);
+    const zones = (key: string) => scheduleZoneForDay(key, state.legs, state.zoneChoice);
+    const dayKey = dayKeyInZone(now, zones(dayKeyInZone(now, HOME_TZ)));
+    const zone = zones(dayKey);
     const targetAt = makeTargetAt(state.legs, state.zoneChoice, phoneTz);
     const { doses, carry } = liveAgenda({
       medicines: state.medicines,
       dayKey,
       labelZone: zone,
-      zoneForDay: (key) => (key === dayKey ? zone : zoneForDayKey(key, state.legs, state.zoneChoice, phoneTz)),
+      zoneForDay: zones,
       now,
       leadMinutes: state.leadMinutes,
       logs: state.logs,
