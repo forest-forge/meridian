@@ -1,6 +1,6 @@
 import { holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, ukOffsetLabel, wallToUtc, zonedTimeToUtc } from "@/lib/time";
+import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, ukOffsetLabel, wallToUtc, zoneAbbrev, zonedTimeToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
@@ -61,7 +61,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
         }}
         options={[
           { value: "journey", label: "My journey", hint: "The stop that covers right now, even if the phone stays on UK time." },
-          { value: "phone", label: "This phone", hint: `The phone is set to ${cityFromZone(phoneTz)}.` },
+          { value: "phone", label: "This phone", hint: `The phone is set to ${cityFromZone(phoneTz)} (${zoneAbbrev(now, phoneTz)}).` },
           { value: "locked", label: "A fixed time zone", hint: "Hold one zone for the whole trip." },
         ]}
       />

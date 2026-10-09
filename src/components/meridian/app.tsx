@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { chime, unlockAudio } from "@/lib/chime";
 import { FOOD_LABEL, WATER_LABEL, liveAgenda, makeTargetAt, scheduleZoneForDay } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { HOME_TZ, dayKeyInZone } from "@/lib/time";
+import { HOME_TZ, dayKeyInZone, phoneZoneName } from "@/lib/time";
 import { History } from "./history";
 import { Journey } from "./journey";
 import { Kit } from "./kit";
@@ -88,8 +88,8 @@ function Ready() {
   useEffect(() => {
     const tick = () => {
       setNow(new Date());
-      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (zone) setPhoneTz(zone);
+      const zone = phoneZoneName(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      setPhoneTz(zone);
     };
     tick();
     const id = window.setInterval(tick, 15_000);

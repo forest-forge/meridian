@@ -10,15 +10,16 @@ import {
   legAt,
   liveAgenda,
   placeLabel,
-  retieLegs,
   scheduleZoneForDay,
+  shiftLegs,
+  slideHoliday,
   stopLengthDays,
   tripSpanDays,
   validateLegs,
   zoneForInstant,
   type Medicine,
 } from "./schedule.ts";
-import { HOME_TZ, formatDayKey, pairedClock, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
+import { HOME_TZ, formatDayKey, pairedClock, phoneZoneName, ukOffsetLabel, zoneAbbrev, zonedTimeToUtc } from "./time.ts";
 
 describe("time zones", () => {
   it("converts a UK morning in BST to UTC", () => {
@@ -67,18 +68,26 @@ describe("offsets from the UK", () => {
     assert.equal(formatDayKey("2026-11-29"), "29 Nov 2026");
   });
 
-  it("moves a stop when the holiday dates move", () => {
-    const legs = retieLegs(
-      [{ id: "paris", place: "Paris", timeZone: "Europe/Paris", arrive: "2026-11-02T12:00", depart: "2026-11-16T18:00" }],
-      "2026-11-02",
-      "2026-11-16",
-      "2026-08-02",
-      "2026-08-16",
-    );
-    assert.equal(legs[0]?.arrive.slice(0, 10), "2026-08-02");
-    assert.equal(legs[0]?.depart.slice(0, 10), "2026-08-16");
+  it("slides every stop when only the start date changes, and keeps the clock time", () => {
+    const paris = { id: "paris", place: "Paris", timeZone: "Europe/Paris", arrive: "2026-11-02T12:00", depart: "2026-11-16T12:00" };
+    const slid = slideHoliday("2026-11-02", "2026-11-16", "2026-08-02", "2026-11-16");
+    assert.equal(slid.start, "2026-08-02");
+    assert.equal(slid.end, "2026-08-16");
+    const legs = shiftLegs([paris], slid.delta);
+    assert.equal(legs[0]?.arrive, "2026-08-02T12:00");
+    assert.equal(legs[0]?.depart, "2026-08-16T12:00");
+    assert.equal(stopLengthDays(legs[0]!), 15);
+    assert.notEqual(legs[0]?.arrive.slice(0, 10), legs[0]?.depart.slice(0, 10));
     const noon = zonedTimeToUtc("Europe/Paris", 2026, 8, 2, 12, 0);
     assert.equal(ukOffsetLabel("Europe/Paris", noon), "+1");
+  });
+
+  it("does not call a BST phone UTC", () => {
+    const now = new Date("2026-10-09T20:46:00.000Z");
+    assert.equal(zoneAbbrev(now, "Europe/London"), "BST");
+    assert.equal(phoneZoneName("UTC"), "Europe/London");
+    assert.equal(phoneZoneName("Europe/Paris"), "Europe/Paris");
+    assert.notEqual(zoneAbbrev(now, phoneZoneName("UTC")), "UTC");
   });
 });
 

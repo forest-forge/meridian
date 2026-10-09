@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
-import { holidayError, holidayLength, retieDay, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
+import { holidayError, holidayLength, slideHoliday, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
+import { formatDayKey, formatWallInput, shiftDayKey, ukOffsetLabel, wallToUtc } from "@/lib/time";
 import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
@@ -249,20 +249,18 @@ export function Wizard() {
             <Label text="Leave">
               <input type="date" aria-label="Leave" className={control} value={holidayStart ?? ""} onChange={(event) => {
                 const next = event.target.value || null;
-                if (holidayStart && holidayEnd && next) {
-                  setStops((current) => current.map((stop) => ({ ...stop, from: retieDay(stop.from, holidayStart, holidayEnd, next, holidayEnd) })));
-                }
-                setHoliday(next, holidayEnd);
+                const slid = slideHoliday(holidayStart, holidayEnd, next, holidayEnd);
+                if (slid.delta !== 0) setStops((current) => current.map((stop) => ({ ...stop, from: shiftDayKey(stop.from, slid.delta) })));
+                setHoliday(slid.start, slid.end);
                 setError(null);
               }} />
             </Label>
             <Label text="Home">
               <input type="date" aria-label="Home" className={control} value={holidayEnd ?? ""} onChange={(event) => {
                 const next = event.target.value || null;
-                if (holidayStart && holidayEnd && next) {
-                  setStops((current) => current.map((stop) => ({ ...stop, from: retieDay(stop.from, holidayStart, holidayEnd, holidayStart, next) })));
-                }
-                setHoliday(holidayStart, next);
+                const slid = slideHoliday(holidayStart, holidayEnd, holidayStart, next);
+                if (slid.delta !== 0) setStops((current) => current.map((stop) => ({ ...stop, from: shiftDayKey(stop.from, slid.delta) })));
+                setHoliday(slid.start, slid.end);
                 setError(null);
               }} />
             </Label>

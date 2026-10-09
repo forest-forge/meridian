@@ -173,6 +173,12 @@ export function zoneAbbrev(date: Date, timeZone: string): string {
   return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
 }
 
+/** Ignore a bare UTC fallback. A UK clock showing BST is not a phone set to UTC. */
+export function phoneZoneName(reported: string | undefined): string {
+  if (!reported || reported === "UTC" || reported === "Etc/UTC" || reported === "Etc/GMT") return HOME_TZ;
+  return isTimeZone(reported) ? reported : HOME_TZ;
+}
+
 export function cityFromZone(timeZone: string): string {
   const city = timeZone.split("/").pop() ?? timeZone;
   return city.replace(/_/g, " ");

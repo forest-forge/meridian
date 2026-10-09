@@ -222,49 +222,34 @@ export function stopLengthDays(leg: Leg): number {
 
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Move a date that was tied to the old holiday onto the new one. */
-export function retieDay(
-  day: string,
-  oldStart: string,
-  oldEnd: string,
-  newStart: string,
-  newEnd: string,
-): string {
-  if (!DAY_KEY.test(day) || !DAY_KEY.test(oldStart) || !DAY_KEY.test(oldEnd) || !DAY_KEY.test(newStart) || !DAY_KEY.test(newEnd)) {
-    return day;
-  }
-  const startDelta = calendarDayDiff(oldStart, newStart);
-  const endDelta = calendarDayDiff(oldEnd, newEnd);
-  if (startDelta === 0 && endDelta === 0) return day;
-  if (startDelta === endDelta) return shiftDayKey(day, startDelta);
-  if (startDelta !== 0 && day === oldStart) return newStart;
-  if (endDelta !== 0 && day === oldEnd) return newEnd;
-  if (startDelta !== 0 && endDelta !== 0) return shiftDayKey(day, startDelta);
-  return day;
-}
-
-export function retieLegs(
-  legs: Leg[],
+/**
+ * Moving either holiday date slides the whole trip by that many days.
+ * 2–16 Nov edited to 2 Aug becomes 2–16 Aug, and every stop moves with it.
+ */
+export function slideHoliday(
   oldStart: string | null,
   oldEnd: string | null,
   newStart: string | null,
   newEnd: string | null,
-): Leg[] {
-  if (!oldStart || !oldEnd || !newStart || !newEnd) return legs;
-  if (holidayError(newStart, newEnd)) return legs;
-  if (oldStart === newStart && oldEnd === newEnd) return legs;
-  return legs.map((leg) => {
-    const arriveDay = leg.arrive.slice(0, 10);
-    const departDay = leg.depart.slice(0, 10);
-    const nextArrive = retieDay(arriveDay, oldStart, oldEnd, newStart, newEnd);
-    let nextDepart = retieDay(departDay, oldStart, oldEnd, newStart, newEnd);
-    if (nextDepart < nextArrive) nextDepart = nextArrive;
-    return {
-      ...leg,
-      arrive: nextArrive + leg.arrive.slice(10),
-      depart: nextDepart + leg.depart.slice(10),
-    };
-  });
+): { start: string | null; end: string | null; delta: number } {
+  if (!oldStart || !oldEnd || !newStart || !newEnd) return { start: newStart, end: newEnd, delta: 0 };
+  if (!DAY_KEY.test(oldStart) || !DAY_KEY.test(oldEnd) || !DAY_KEY.test(newStart) || !DAY_KEY.test(newEnd)) {
+    return { start: newStart, end: newEnd, delta: 0 };
+  }
+  const startDelta = calendarDayDiff(oldStart, newStart);
+  const endDelta = calendarDayDiff(oldEnd, newEnd);
+  const delta = startDelta === endDelta ? startDelta : endDelta === 0 ? startDelta : startDelta === 0 ? endDelta : startDelta;
+  if (delta === 0) return { start: oldStart, end: oldEnd, delta: 0 };
+  return { start: shiftDayKey(oldStart, delta), end: shiftDayKey(oldEnd, delta), delta };
+}
+
+export function shiftLegs(legs: Leg[], delta: number): Leg[] {
+  if (delta === 0) return legs;
+  return legs.map((leg) => ({
+    ...leg,
+    arrive: shiftDayKey(leg.arrive.slice(0, 10), delta) + leg.arrive.slice(10),
+    depart: shiftDayKey(leg.depart.slice(0, 10), delta) + leg.depart.slice(10),
+  }));
 }
 
 function calendarDayDiff(start: string, end: string): number {

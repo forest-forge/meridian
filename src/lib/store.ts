@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { BodyClock, Leg, LogEntry, Medicine, ZoneChoice } from "./schedule";
-import { retieLegs, validateLegs, zoneForInstant } from "./schedule";
+import { shiftLegs, slideHoliday, validateLegs, zoneForInstant } from "./schedule";
 import { buildSample } from "./sample";
 import { HOME_TZ, dayKeyInZone, localDayBounds, offsetMinutes, zonedTimeToUtc } from "./time";
 
@@ -172,12 +172,15 @@ export const useMeridian = create<MeridianData & Actions>()(
         });
       },
       setHoliday: (start, end) =>
-        set((state) => ({
-          holidayStart: start,
-          holidayEnd: end,
-          sampleNote: false,
-          legs: retieLegs(state.legs, state.holidayStart, state.holidayEnd, start, end),
-        })),
+        set((state) => {
+          const slid = slideHoliday(state.holidayStart, state.holidayEnd, start, end);
+          return {
+            holidayStart: slid.start,
+            holidayEnd: slid.end,
+            sampleNote: false,
+            legs: shiftLegs(state.legs, slid.delta),
+          };
+        }),
       beginSetup: () => {
         const state = get();
         if ((state.setupRev ?? 0) >= 2) return;
