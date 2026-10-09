@@ -6,6 +6,7 @@ import {
   formatHm,
   localDayBounds,
   offsetMinutes,
+  partsInZone,
   shiftDayKey,
   wallToUtc,
   zonedTimeToUtc,
@@ -30,6 +31,8 @@ export type Medicine = {
   active: boolean;
   startDate: string | null;
   endDate: string | null;
+  holdTime?: boolean;
+  tablets?: number | null;
 };
 
 export type Leg = {
@@ -85,6 +88,7 @@ export type DoseView = {
   scheduledAt: string;
   localLabel: string;
   ukLabel: string;
+  movedFrom: string | null;
   gapHours: number | null;
   state: DoseState;
   snoozeUntil: string | null;
@@ -282,6 +286,7 @@ type Slot = {
   medicine: Medicine;
   hhmm: string;
   at: Date;
+  movedFrom: string | null;
 };
 
 function inCourse(
@@ -331,7 +336,10 @@ function slotsForDay(
         end,
         bodyOffset,
       );
-      for (const at of instants) out.push({ medicine, hhmm, at });
+      for (const at of instants) {
+        const woken = medicine.holdTime ? { at, movedFrom: null } : wakeAdjusted(at, zone);
+        out.push({ medicine, hhmm, at: woken.at, movedFrom: woken.movedFrom });
+      }
     }
   }
   out.sort((a, b) => a.at.getTime() - b.at.getTime());
@@ -380,6 +388,15 @@ function instantsFor(
   return dedupeInstants(found);
 }
 
+function wakeAdjusted(at: Date, zone: string): { at: Date; movedFrom: string | null } {
+  const parts = partsInZone(at, zone);
+  if (parts.hour >= 6) return { at, movedFrom: null };
+  return {
+    at: zonedTimeToUtc(zone, parts.year, parts.month, parts.day, 6, 0),
+    movedFrom: formatHm(at, zone),
+  };
+}
+
 function dedupeInstants(dates: Date[]): Date[] {
   const seen = new Set<number>();
   const out: Date[] = [];
@@ -419,6 +436,7 @@ function decorate(
       scheduledAt,
       localLabel: formatHm(slot.at, labelZone),
       ukLabel: formatHm(slot.at, HOME_TZ),
+      movedFrom: slot.movedFrom,
       gapHours,
       state: doseState(slot.at, now, leadMinutes, log),
       snoozeUntil: log?.status === "snoozed" ? log.snoozeUntil ?? null : null,

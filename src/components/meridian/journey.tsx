@@ -1,6 +1,7 @@
 import { legRange, placeLabel, sortedLegs, tripSpanDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, cityFromZone, formatShortWhen, offsetLabel, offsetMinutes, wallToUtc } from "@/lib/time";
+import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
 import { Button, Choice, Note } from "./ui";
@@ -14,6 +15,22 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
   const zone = zoneForInstant(legs, now, choice, phoneTz);
   const place = placeLabel(legs, zone, now);
   const days = tripSpanDays(legs);
+  const holidayStart = useMeridian((s) => s.holidayStart);
+  const holidayEnd = useMeridian((s) => s.holidayEnd);
+  const medicines = useMeridian((s) => s.medicines);
+  const wallet = useMeridian((s) => s.wallet);
+  const clock = useMeridian((s) => s.bodyClock);
+  const shift = useMeridian((s) => s.shiftMinutesPerDay);
+
+  function download() {
+    if (!holidayStart || !holidayEnd) return;
+    downloadTripSheet({ medicines, legs, holidayStart, holidayEnd, wallet, clock, shiftMinutesPerDay: shift });
+  }
+
+  function calendar() {
+    if (!holidayStart || !holidayEnd) return;
+    downloadTripCalendar({ medicines, legs, holidayStart, holidayEnd, clock, shiftMinutesPerDay: shift });
+  }
 
   return (
     <div className="grid gap-5">
@@ -22,6 +39,15 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
         <p className="mt-1 text-sm text-subtle">You live in the UK. Home time is London, including BST.</p>
       </div>
       <HolidayDates />
+      {holidayStart && holidayEnd ? (
+        <div className="grid gap-2">
+          <Button variant="quiet" onClick={download}>Download printable trip</Button>
+          <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
+          {medicines.filter((medicine) => runOutDay(medicine, holidayStart)).map((medicine) => (
+            <p key={medicine.id} className="text-sm text-subtle">{medicine.name} runs out {runOutDay(medicine, holidayStart)}</p>
+          ))}
+        </div>
+      ) : null}
 
       <Choice<ZoneChoice["source"]>
         legend="Reminders follow"

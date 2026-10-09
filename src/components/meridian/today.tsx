@@ -217,6 +217,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
                 <span className="mt-1 block text-sm font-medium">{dose.name}</span>
                 <span className="mt-1 block text-sm text-subtle">
                   {FOOD_LABEL[dose.food]} · {WATER_LABEL[dose.water]}
+                  {dose.movedFrom ? ` · moved from ${dose.movedFrom}` : ""}
                 </span>
               </span>
               <span className="shrink-0 text-right text-sm text-subtle">
@@ -345,6 +346,9 @@ function DoseCard({
         </li>
       </ul>
       {dose.notes ? <p className="mt-3 text-sm">{dose.notes}</p> : null}
+      {dose.movedFrom ? (
+        <p className="mt-3 text-sm text-subtle">Moved from {dose.movedFrom}. Asleep until 06:00.</p>
+      ) : null}
       <p className="mt-3 text-sm text-subtle">
         {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
       </p>

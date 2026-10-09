@@ -92,6 +92,42 @@ describe("sample holiday", () => {
     assert.equal(supper?.state, "overdue");
   });
 
+  it("moves a dose that lands while asleep to 06:00 local", () => {
+    const zone = "Asia/Singapore";
+    const { doses } = liveAgenda({
+      medicines: [
+        {
+          id: "night",
+          name: "Evening",
+          dose: "1",
+          times: ["22:00"],
+          food: "either",
+          water: "either",
+          notes: "",
+          mode: "uk",
+          active: true,
+          startDate: null,
+          endDate: null,
+        },
+      ],
+      dayKey: "2026-10-10",
+      labelZone: zone,
+      zoneForDay: () => zone,
+      now: new Date("2026-10-09T12:00:00.000Z"),
+      leadMinutes: 15,
+      logs: [],
+      clock: { offsetMinutes: 60, asOf: "2026-10-01T00:00:00.000Z" },
+      shiftMinutesPerDay: 60,
+      targetAt: () => 60,
+      carryover: false,
+      holidayStart: "2026-10-01",
+      holidayEnd: "2026-10-20",
+    });
+    assert.equal(doses.length, 1);
+    assert.equal(doses[0].movedFrom, "05:00");
+    assert.equal(doses[0].localLabel, "06:00");
+  });
+
   it("skips doses outside the holiday dates", () => {
     const zone = "Asia/Singapore";
     const { doses } = liveAgenda({

@@ -28,6 +28,8 @@ function blankMedicine(): Medicine {
     active: true,
     startDate: null,
     endDate: null,
+    holdTime: false,
+    tablets: null,
   };
 }
 
@@ -101,6 +103,22 @@ export function MedicineEditor({
           onChange={(event) => setDraft({ ...draft, dose: event.target.value })}
         />
       </Field>
+      <Field label="Tablets in the pack" hint="Used to warn when the pack runs out.">
+        <TextInput
+          inputMode="numeric"
+          value={draft.tablets ?? ""}
+          placeholder="42"
+          onChange={(event) => setDraft({ ...draft, tablets: event.target.value ? Number(event.target.value.replace(/[^\d]/g, "")) : null })}
+        />
+      </Field>
+      <button
+        type="button"
+        aria-pressed={Boolean(draft.holdTime)}
+        className={`min-h-11 rounded-md border px-3 text-left text-sm ${draft.holdTime ? "border-accent bg-accent text-accent-fg" : "border-line bg-surface"}`}
+        onClick={() => setDraft({ ...draft, holdTime: !draft.holdTime })}
+      >
+        {draft.holdTime ? "Hold this time. Do not move it for sleep." : "Move to 06:00 if it lands while asleep."}
+      </button>
       <fieldset>
         <legend className="text-sm font-medium">Times</legend>
         <p className="mt-1 text-sm text-subtle">24-hour clock. Add every time you take it in a day.</p>

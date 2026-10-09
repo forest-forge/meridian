@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { PLACES } from "@/lib/places";
-import { holidayError, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
+import { holidayError, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { formatDayKey, formatWallInput, ukOffsetLabel, wallToUtc } from "@/lib/time";
+import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
 
@@ -12,6 +13,9 @@ type Draft = {
   time: string;
   food: FoodRule | null;
   water: WaterRule | null;
+  holdTime: boolean;
+  tablets: string;
+  mode: ClockMode;
 };
 
 type Stop = { place: string; from: string };
@@ -22,6 +26,9 @@ const emptyDraft = (): Draft => ({
   time: "08:00",
   food: null,
   water: null,
+  holdTime: false,
+  tablets: "",
+  mode: "ease",
 });
 
 const FOOD: Array<{ value: FoodRule; label: string }> = [
@@ -30,6 +37,11 @@ const FOOD: Array<{ value: FoodRule; label: string }> = [
   { value: "either", label: "Either" },
 ];
 
+const CLOCK: Array<{ value: ClockMode; label: string }> = [
+  { value: "ease", label: "Ease" },
+  { value: "uk", label: "UK" },
+  { value: "local", label: "Jump" },
+];
 const WATER: Array<{ value: WaterRule; label: string }> = [
   { value: "full", label: "Full glass" },
   { value: "sip", label: "Sip" },
@@ -48,6 +60,8 @@ export function Wizard() {
   const deleteLeg = useMeridian((s) => s.deleteLeg);
   const finishWizard = useMeridian((s) => s.finishWizard);
   const startFromUk = useMeridian((s) => s.startFromUk);
+  const wallet = useMeridian((s) => s.wallet);
+  const setWallet = useMeridian((s) => s.setWallet);
 
   const [step, setStep] = useState<"medicines" | "trip">("medicines");
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -71,10 +85,12 @@ export function Wizard() {
       food: draft.food,
       water: draft.water,
       notes: "",
-      mode: "uk",
+      mode: draft.mode,
       active: true,
       startDate: null,
       endDate: null,
+      holdTime: draft.holdTime,
+      tablets: draft.tablets.trim() ? Number(draft.tablets) : null,
     };
   }
 
@@ -169,17 +185,54 @@ export function Wizard() {
   }
 
   function done() {
+    if (!saveTrip()) return;
+    startFromUk(new Date());
+    finishWizard();
+  }
+
+  function download() {
+    if (!saveTrip()) return;
+    startFromUk(new Date());
+    const state = useMeridian.getState();
+    if (!state.holidayStart || !state.holidayEnd) return;
+    downloadTripSheet({
+      medicines: state.medicines,
+      legs: state.legs,
+      holidayStart: state.holidayStart,
+      holidayEnd: state.holidayEnd,
+      wallet: state.wallet,
+      clock: state.bodyClock,
+      shiftMinutesPerDay: state.shiftMinutesPerDay,
+    });
+  }
+
+  function calendar() {
+    if (!saveTrip()) return;
+    startFromUk(new Date());
+    const state = useMeridian.getState();
+    if (!state.holidayStart || !state.holidayEnd) return;
+    downloadTripCalendar({
+      medicines: state.medicines,
+      legs: state.legs,
+      holidayStart: state.holidayStart,
+      holidayEnd: state.holidayEnd,
+      clock: state.bodyClock,
+      shiftMinutesPerDay: state.shiftMinutesPerDay,
+    });
+  }
+
+  function saveTrip(): boolean {
     if (!holidayStart || !holidayEnd || dateError) {
       setError(dateError ?? "Add the day you leave and the day you get home.");
-      return;
+      return false;
     }
     const problem = writeStops();
     if (problem) {
       setError(problem);
-      return;
+      return false;
     }
-    startFromUk(new Date());
-    finishWizard();
+    setError(null);
+    return true;
   }
 
   if (step === "trip") {
@@ -189,7 +242,7 @@ export function Wizard() {
           <h1 className="font-display text-2xl font-medium tracking-tight">Where you go</h1>
           <p className="text-xs text-subtle">Not medical advice</p>
         </header>
-        <p className="mt-1 text-sm text-muted">Add each place and the day you arrive. Meridian turns your UK times into the local time there.</p>
+        <p className="mt-1 text-sm text-muted">Add each place and the day you arrive. Eased doses move about an hour a day toward that local time. Anything due between midnight and 6am moves to 06:00 unless you held it.</p>
 
         <div className="mt-2 grid gap-1.5">
           <div className="grid grid-cols-2 gap-2">
@@ -230,13 +283,32 @@ export function Wizard() {
           ) : (
             <p className="text-sm text-subtle">No places yet. Times stay on the UK clock.</p>
           )}
+          <Label text="Name on the wallet card">
+            <input aria-label="Name on the wallet card" className={control} value={wallet.name} onChange={(event) => setWallet({ ...wallet, name: event.target.value })} />
+          </Label>
+          <Label text="Conditions">
+            <input aria-label="Conditions" className={control} placeholder="As she wants them written" value={wallet.conditions} onChange={(event) => setWallet({ ...wallet, conditions: event.target.value })} />
+          </Label>
+          <Label text="Clinic phone">
+            <input aria-label="Clinic phone" className={control} value={wallet.clinic} onChange={(event) => setWallet({ ...wallet, clinic: event.target.value })} />
+          </Label>
+          <Label text="Emergency contact">
+            <input aria-label="Emergency contact" className={control} value={wallet.emergency} onChange={(event) => setWallet({ ...wallet, emergency: event.target.value })} />
+          </Label>
+          <Label text="Insurance">
+            <input aria-label="Insurance" className={control} value={wallet.insurance} onChange={(event) => setWallet({ ...wallet, insurance: event.target.value })} />
+          </Label>
         </div>
 
         {error || dateError ? <p className="mt-1 text-sm text-danger">{error ?? dateError}</p> : null}
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Button variant="quiet" onClick={() => { setError(null); setStep("medicines"); }}>Back</Button>
-          <Button onClick={done}>Done</Button>
+        <div className="mt-3 grid gap-2">
+          <Button variant="quiet" onClick={download}>Download printable trip</Button>
+          <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="quiet" onClick={() => { setError(null); setStep("medicines"); }}>Back</Button>
+            <Button onClick={done}>Done</Button>
+          </div>
         </div>
       </main>
     );
@@ -248,14 +320,14 @@ export function Wizard() {
         <h1 className="font-display text-2xl font-medium tracking-tight">UK times</h1>
         <p className="text-xs text-subtle">Not medical advice</p>
       </header>
-      <p className="mt-1 text-sm text-muted">When you take each medicine at home. The holiday comes next.</p>
+      <p className="mt-1 text-sm text-muted">Enter the UK time. Ease walks it toward local time by about an hour a day after you leave, so the gap stays near 24 hours. A same-day jump is the one to avoid flying east.</p>
 
       <div className="mt-2 grid gap-1.5">
         {medicines.length > 0 ? (
           <ul className="grid gap-1">
             {medicines.map((medicine) => (
               <li key={medicine.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 truncate">{medicine.name} {medicine.dose} · {medicine.times[0]}</span>
+                <span className="min-w-0 truncate">{medicine.name} {medicine.dose} · {medicine.times[0]} · {medicine.mode === "ease" ? "easing" : medicine.mode === "local" ? "jump" : "UK"}</span>
                 <button type="button" className="min-h-11 shrink-0 text-subtle" onClick={() => deleteMedicine(medicine.id)}>
                   Remove
                 </button>
@@ -274,8 +346,17 @@ export function Wizard() {
         <Label text="Time at home">
           <input type="time" aria-label="Time at home" className={control} value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} />
         </Label>
+        <Chips legend="Clock" value={draft.mode} options={CLOCK} onChange={(mode) => setDraft({ ...draft, mode })} />
+        <p className="text-xs text-subtle">Ease is the one for a beta blocker or ACE inhibitor. UK keeps home time. Jump switches the whole dose on arrival.</p>
         <Chips legend="Food" value={draft.food} options={FOOD} onChange={(food) => setDraft({ ...draft, food })} />
         <Chips legend="Water" value={draft.water} options={WATER} onChange={(water) => setDraft({ ...draft, water })} />
+        <Label text="Tablets in the pack">
+          <input aria-label="Tablets in the pack" inputMode="numeric" className={control} placeholder="42" value={draft.tablets} onChange={(event) => setDraft({ ...draft, tablets: event.target.value.replace(/[^\d]/g, "") })} />
+        </Label>
+        <button type="button" aria-pressed={draft.holdTime} className={cn("min-h-11 rounded-md border px-2 text-left text-sm", draft.holdTime ? "border-accent bg-accent text-accent-fg" : "border-line bg-surface")} onClick={() => setDraft({ ...draft, holdTime: !draft.holdTime })}>
+          {draft.holdTime ? "Hold this time. Do not move it for sleep." : "Move to 06:00 if it lands while asleep."}
+        </button>
+        <p className="text-xs text-subtle">Hold only if the clinic says this dose must not move for sleep.</p>
       </div>
 
       {error ? <p className="mt-1 text-sm text-danger">{error}</p> : null}

@@ -3,7 +3,15 @@ import { persist } from "zustand/middleware";
 import type { BodyClock, Leg, LogEntry, Medicine, ZoneChoice } from "./schedule";
 import { validateLegs, zoneForInstant } from "./schedule";
 import { buildSample } from "./sample";
-import { HOME_TZ, dayKeyInZone, localDayBounds, offsetMinutes } from "./time";
+import { HOME_TZ, dayKeyInZone, localDayBounds, offsetMinutes, zonedTimeToUtc } from "./time";
+
+export type Wallet = {
+  name: string;
+  conditions: string;
+  clinic: string;
+  emergency: string;
+  insurance: string;
+};
 
 export type MeridianData = {
   medicines: Medicine[];
@@ -21,6 +29,7 @@ export type MeridianData = {
   holidayEnd: string | null;
   wizardDone: boolean;
   setupRev: number;
+  wallet: Wallet;
 };
 
 type Actions = {
@@ -41,11 +50,20 @@ type Actions = {
   setHoliday: (start: string | null, end: string | null) => void;
   beginSetup: () => void;
   finishWizard: () => void;
+  setWallet: (wallet: Wallet) => void;
 };
 
 const emptyClock = (now: Date): BodyClock => ({
   offsetMinutes: offsetMinutes(HOME_TZ, now),
   asOf: now.toISOString(),
+});
+
+const emptyWallet = (): Wallet => ({
+  name: "",
+  conditions: "",
+  clinic: "",
+  emergency: "",
+  insurance: "",
 });
 
 const initial = (): MeridianData => ({
@@ -64,6 +82,7 @@ const initial = (): MeridianData => ({
   holidayEnd: null,
   wizardDone: false,
   setupRev: 0,
+  wallet: emptyWallet(),
 });
 
 export const useMeridian = create<MeridianData & Actions>()(
@@ -141,11 +160,14 @@ export const useMeridian = create<MeridianData & Actions>()(
         set({ bodyClock: { offsetMinutes: offsetMinutesValue, asOf: now.toISOString() }, easeRev: 2 }),
       startFromUk: (now) => {
         const state = get();
-        const zone = zoneForInstant(state.legs, now, state.zoneChoice, HOME_TZ);
-        const end = localDayBounds(dayKeyInZone(now, zone), zone)?.end ?? now;
-        const anchor = end.getTime() > now.getTime() ? end : now;
+        const parts = state.holidayStart?.split("-").map(Number);
+        const anchor =
+          parts && parts.length === 3
+            ? zonedTimeToUtc(HOME_TZ, parts[0], parts[1], parts[2], 8, 0)
+            : now;
         set({
-          bodyClock: { offsetMinutes: offsetMinutes(HOME_TZ, now), asOf: anchor.toISOString() },
+          bodyClock: { offsetMinutes: offsetMinutes(HOME_TZ, anchor), asOf: anchor.toISOString() },
+          shiftMinutesPerDay: 60,
           easeRev: 2,
         });
       },
@@ -167,6 +189,7 @@ export const useMeridian = create<MeridianData & Actions>()(
         });
       },
       finishWizard: () => set({ wizardDone: true, seeded: true, sampleNote: false }),
+      setWallet: (wallet) => set({ wallet }),
     }),
     {
       name: "meridian-v1",
