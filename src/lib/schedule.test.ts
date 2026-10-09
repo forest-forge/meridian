@@ -92,6 +92,15 @@ describe("offsets from the UK", () => {
     assert.equal(ukOffsetLabel("Europe/Paris", noon), "+1");
   });
 
+  it("lets the home date lengthen a 17-day holiday", () => {
+    const slid = slideHoliday("2026-11-02", "2026-11-18", "2026-11-02", "2026-12-16");
+    assert.equal(slid.start, "2026-11-02");
+    assert.equal(slid.end, "2026-12-16");
+    assert.equal(slid.delta, 0);
+    assert.equal(holidayLength(slid.start!, slid.end!), 45);
+    assert.equal(holidayError(slid.start, slid.end), null);
+  });
+
   it("does not call a BST phone UTC", () => {
     const now = new Date("2026-10-09T20:46:00.000Z");
     assert.equal(zoneAbbrev(now, "Europe/London"), "BST");

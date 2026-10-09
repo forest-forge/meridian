@@ -226,8 +226,8 @@ export function stopLengthDays(leg: Leg): number {
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Moving either holiday date slides the whole trip by that many days.
- * 2–16 Nov edited to 2 Aug becomes 2–16 Aug, and every stop moves with it.
+ * Moving the leave date slides the whole trip by that many days.
+ * Moving only the home date changes the length. 2–16 Nov can become 2 Nov–16 Dec.
  */
 export function slideHoliday(
   oldStart: string | null,
@@ -241,6 +241,7 @@ export function slideHoliday(
   }
   const startDelta = calendarDayDiff(oldStart, newStart);
   const endDelta = calendarDayDiff(oldEnd, newEnd);
+  if (startDelta === 0 && endDelta !== 0) return { start: oldStart, end: newEnd, delta: 0 };
   const delta = startDelta === endDelta ? startDelta : endDelta === 0 ? startDelta : startDelta === 0 ? endDelta : startDelta;
   if (delta === 0) return { start: oldStart, end: oldEnd, delta: 0 };
   return { start: shiftDayKey(oldStart, delta), end: shiftDayKey(oldEnd, delta), delta };

@@ -178,11 +178,20 @@ export const useMeridian = create<MeridianData & Actions>()(
       setHoliday: (start, end) =>
         set((state) => {
           const slid = slideHoliday(state.holidayStart, state.holidayEnd, start, end);
+          let legs = shiftLegs(state.legs, slid.delta);
+          if (slid.delta === 0 && state.holidayEnd && slid.end && state.holidayEnd !== slid.end) {
+            const previousEnd = state.holidayEnd;
+            legs = legs.map((leg) => {
+              if (leg.depart.slice(0, 10) !== previousEnd) return leg;
+              if (slid.end! < leg.arrive.slice(0, 10)) return leg;
+              return { ...leg, depart: `${slid.end}${leg.depart.slice(10)}` };
+            });
+          }
           return {
             holidayStart: slid.start,
             holidayEnd: slid.end,
             sampleNote: false,
-            legs: shiftLegs(state.legs, slid.delta),
+            legs,
           };
         }),
       beginSetup: () => {
