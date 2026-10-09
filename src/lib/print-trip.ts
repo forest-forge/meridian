@@ -4,6 +4,7 @@ import {
   liveAgenda,
   makeTargetAt,
   placeLabel,
+  scheduleEnd,
   scheduleZoneForDay,
   type Leg,
   type Medicine,
@@ -66,8 +67,10 @@ function tripHtml(args: {
   const choice = { source: "journey" as const };
   const targetAt = makeTargetAt(args.legs, choice, HOME_TZ);
   const clock = args.clock;
+  const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
+  const lastDay = scheduleEnd(args.medicines, args.holidayStart, args.holidayEnd, args.shiftMinutesPerDay, zones);
   const days: string[] = [];
-  for (let day = args.holidayStart; day <= args.holidayEnd; day = shiftDayKey(day, 1)) days.push(day);
+  for (let day = args.holidayStart; day <= lastDay; day = shiftDayKey(day, 1)) days.push(day);
 
   const sections = days
     .map((day) => {
@@ -122,7 +125,8 @@ function tripHtml(args: {
     ["Emergency", args.wallet.emergency],
     ["Insurance", args.wallet.insurance],
   ]
-    .map(([label, value]) => `<p><strong>${label}.</strong> ${esc(value || "—")}</p>`)
+    .filter(([, value]) => value.trim())
+    .map(([label, value]) => `<p><strong>${label}.</strong> ${esc(value)}</p>`)
     .join("");
 
   return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><title>Meridian trip</title>
@@ -139,7 +143,7 @@ function tripHtml(args: {
 </style></head><body>
 <h1>Meridian</h1>
 <p>${esc(formatDayKey(args.holidayStart))} to ${esc(formatDayKey(args.holidayEnd))}. Times are local. UK time is beside them.</p>
-<div class="card"><h2>Wallet card</h2>${card}</div>
+${card ? `<div class="card"><h2>Wallet card</h2>${card}</div>` : ""}
 <h2>Kit</h2><ul>${kit || "<li>No medicines.</li>"}</ul>
 ${sections}
 <p class="note">Not medical advice. Eased doses walk about an hour a day toward local time from the day you leave. Doses between midnight and 06:00 local move to 06:00 unless that medicine is marked hold. Import the calendar file so the phone alarms at each dose.</p>
@@ -158,7 +162,9 @@ function tripIcs(args: {
   const targetAt = makeTargetAt(args.legs, choice, HOME_TZ);
   const clock = args.clock;
   const events: string[] = [];
-  for (let day = args.holidayStart; day <= args.holidayEnd; day = shiftDayKey(day, 1)) {
+  const zonesForEnd = (key: string) => scheduleZoneForDay(key, args.legs, choice);
+  const lastDay = scheduleEnd(args.medicines, args.holidayStart, args.holidayEnd, args.shiftMinutesPerDay, zonesForEnd);
+  for (let day = args.holidayStart; day <= lastDay; day = shiftDayKey(day, 1)) {
     const zone = scheduleZoneForDay(day, args.legs, choice);
     const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
     const { doses } = liveAgenda({

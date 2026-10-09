@@ -22,6 +22,13 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
   const londonDay = dayKeyInZone(now, HOME_TZ);
   const doseZone = scheduleZoneForDay(londonDay, legs, choice);
   const place = placeLabel(legs, doseZone, now);
+  const walletLines = [
+    ["Name", wallet.name],
+    ["Conditions", wallet.conditions],
+    ["Clinic phone", wallet.clinic],
+    ["Emergency contact", wallet.emergency],
+    ["Insurance", wallet.insurance],
+  ].filter(([, value]) => value.trim());
   const holidayDays =
     holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd) ? holidayLength(holidayStart, holidayEnd) : 0;
 
@@ -50,6 +57,20 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
             <p key={medicine.id} className="text-sm text-subtle">{medicine.name} runs out {formatDayKey(runOutDay(medicine, holidayStart)!)}</p>
           ))}
         </div>
+      ) : null}
+
+      {walletLines.length > 0 ? (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <h2 className="text-sm font-medium text-subtle">Wallet card</h2>
+          <dl className="mt-2 grid gap-2">
+            {walletLines.map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-sm text-subtle">{label}</dt>
+                <dd className="text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ) : null}
 
       <Choice<ZoneChoice["source"]>

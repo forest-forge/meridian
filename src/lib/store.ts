@@ -231,6 +231,7 @@ export const useMeridian = create<MeridianData & Actions>()(
         wizardDone: state.wizardDone,
         setupRev: state.setupRev,
         kitSavedAt: state.kitSavedAt,
+        wallet: state.wallet,
       }),
       version: 2,
       migrate: (persisted) => {

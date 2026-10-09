@@ -193,9 +193,61 @@ describe("ease from the leave date", () => {
     assert.equal(settled?.gapHours, 24);
   });
 
-  it("schedules nothing after the home date", () => {
-    assert.equal(day("2026-11-17").doses.length, 0);
+  it("stays on Paris time on the home day and walks back the next day", () => {
+    const home = day("2026-11-16");
+    const dose = home.doses[0];
+    assert.equal(dose?.localLabel, "08:00");
+    assert.equal(dose?.ukLabel, "07:00");
+    assert.equal(dose?.gapHours, 24);
+    assert.match(clockLine(dose!), /Has not jumped back yet/);
+    assert.match(easeNote("2026-11-16", "2026-11-02", "2026-11-16", 60, zoneForDay, "Paris"), /Has not jumped back yet/);
+    const back = day("2026-11-17");
+    assert.equal(back.doses.length, 1);
+    assert.equal(back.doses[0]?.ukLabel, "08:00");
+    assert.equal(back.doses[0]?.localLabel, "08:00");
+    assert.equal(back.doses[0]?.gapHours, 25);
+    assert.equal(gapLabel(back.doses[0]?.gapHours ?? null), "Gap since the previous dose: 25 hours.");
     assert.match(easeNote("2026-11-17", "2026-11-02", "2026-11-16", 60, zoneForDay, "Paris"), /back on UK time/);
+    assert.equal(day("2026-11-18").doses.length, 0);
+    const jumped = day("2026-11-16", "local").doses[0];
+    assert.equal(jumped?.ukLabel, "08:00");
+    assert.equal(jumped?.localLabel, "09:00");
+    assert.equal(day("2026-11-15", "local").doses[0]?.localLabel, "08:00");
+    assert.equal(day("2026-11-17", "local").doses.length, 0);
+    assert.equal(day("2026-11-16", "uk").doses[0]?.ukLabel, "08:00");
+    assert.equal(day("2026-11-17", "uk").doses.length, 0);
+  });
+
+  it("walks a New York gap back one hour a day", () => {
+    const ny = "America/New_York";
+    const nyLegs = [{ id: "ny", place: "New York", timeZone: ny, arrive: "2026-11-02T12:00", depart: "2026-11-16T18:00" }];
+    const nyZone = (key: string) => scheduleZoneForDay(key, nyLegs, { source: "journey" });
+    const at = (dayKey: string, mode: Medicine["mode"] = "ease") =>
+      liveAgenda({
+        medicines: [{ ...medicine, mode }],
+        dayKey,
+        labelZone: nyZone(dayKey),
+        zoneForDay: nyZone,
+        now: new Date("2026-10-09T08:00:00.000Z"),
+        leadMinutes: 0,
+        logs: [],
+        clock: { offsetMinutes: 0, asOf: "2026-09-01T00:00:00.000Z" },
+        shiftMinutesPerDay: 60,
+        targetAt: () => 0,
+        carryover: false,
+        holidayStart: "2026-11-02",
+        holidayEnd: "2026-11-16",
+      }).doses[0];
+    const home = at("2026-11-16");
+    assert.equal(home?.localLabel, "08:00");
+    assert.equal(home?.ukLabel, "13:00");
+    assert.match(clockLine(home!), /Has not jumped back yet/);
+    assert.equal(at("2026-11-17")?.ukLabel, "12:00");
+    assert.equal(at("2026-11-17")?.gapHours, 23);
+    assert.equal(at("2026-11-18")?.ukLabel, "11:00");
+    assert.equal(at("2026-11-21")?.ukLabel, "08:00");
+    assert.equal(at("2026-11-21")?.localLabel, "08:00");
+    assert.equal(at("2026-11-22"), undefined);
   });
 });
 

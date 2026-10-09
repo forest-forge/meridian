@@ -93,6 +93,8 @@ export type DoseView = {
   gapHours: number | null;
   state: DoseState;
   snoozeUntil: string | null;
+  /** Home day for Ease: still on the away clock, the walk back has not started. */
+  returnHold?: boolean;
 };
 
 export type TargetFn = (instant: Date) => number;
@@ -334,16 +336,15 @@ function onHoliday(dayKey: string, holidayStart: string | null, holidayEnd: stri
   return Boolean(holidayStart && holidayEnd && holidayError(holidayStart, holidayEnd) === null && dayKey >= holidayStart && dayKey <= holidayEnd);
 }
 
-/** A dose is due only on a holiday day, and not before the kit was saved. */
+/** A dose is due on a holiday day, and not before the kit was saved. Ease also stays due while it walks home. */
 export function doseDueOn(
   dayKey: string,
   holidayStart: string | null,
   holidayEnd: string | null,
   kitSavedDay: string | null = null,
 ): boolean {
-  if (!onHoliday(dayKey, holidayStart, holidayEnd)) return false;
   if (kitSavedDay && dayKey < kitSavedDay) return false;
-  return true;
+  return onHoliday(dayKey, holidayStart, holidayEnd);
 }
 
 function slotsForDay(
@@ -353,12 +354,16 @@ function slotsForDay(
   shiftMinutesPerDay: number,
   holidayStart: string | null,
   holidayEnd: string | null,
+  dueOnly: boolean,
+  kitSavedDay: string | null,
 ): Slot[] {
   const zone = zoneForDay(dayKey);
   const out: Slot[] = [];
+  const step = Math.max(1, shiftMinutesPerDay);
 
   for (const medicine of medicines) {
     if (!medicine.active || !inCourse(medicine, dayKey)) continue;
+    if (dueOnly && !medicineDue(medicine, dayKey, holidayStart, holidayEnd, kitSavedDay, step, zoneForDay)) continue;
     for (const raw of medicine.times) {
       const hhmm = normaliseHhmm(raw);
       const parsed = hhmm ? parseHhmm(hhmm) : null;
@@ -402,6 +407,7 @@ function easeBody(
   hour: number,
   minute: number,
   holidayStart: string,
+  holidayEnd: string | null,
   step: number,
   zoneForDay: (dayKey: string) => string,
 ): number {
@@ -409,17 +415,80 @@ function easeBody(
     const [year, month, day] = key.split("-").map(Number);
     return zonedTimeToUtc(HOME_TZ, year, month, day, hour, minute);
   };
+  const toward = (body: number, target: number) => {
+    const diff = target - body;
+    const move = Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
+    return body + move;
+  };
   let body = offsetMinutes(HOME_TZ, ukInstant(shiftDayKey(holidayStart, -1)));
+  const outwardEnd = holidayEnd && holidayEnd < dayKey ? holidayEnd : dayKey;
   // The leave day stays on UK time. The first step is the day after departure.
-  for (let cursor = shiftDayKey(holidayStart, 1); cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
+  for (let cursor = shiftDayKey(holidayStart, 1); cursor <= outwardEnd; cursor = shiftDayKey(cursor, 1)) {
     const [year, month, day] = cursor.split("-").map(Number);
     const zone = zoneForDay(cursor) || HOME_TZ;
     const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, hour, minute));
-    const diff = target - body;
-    const move = Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
-    body += move;
+    body = toward(body, target);
+  }
+  // The home day does not jump. The walk back starts the day after.
+  if (holidayEnd && dayKey > holidayEnd) {
+    for (let cursor = shiftDayKey(holidayEnd, 1); cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
+      body = toward(body, offsetMinutes(HOME_TZ, ukInstant(cursor)));
+    }
   }
   return body;
+}
+
+/** Last calendar day to print or alarm. Ease keeps going until the walk home reaches London. */
+export function scheduleEnd(
+  medicines: Medicine[],
+  holidayStart: string,
+  holidayEnd: string,
+  shiftMinutesPerDay: number,
+  zoneForDay: (dayKey: string) => string,
+): string {
+  let end = holidayEnd;
+  const step = Math.max(1, shiftMinutesPerDay);
+  for (const medicine of medicines) {
+    if (!medicine.active || medicine.mode !== "ease") continue;
+    const home = easeHomeDay(holidayStart, holidayEnd, step, zoneForDay);
+    if (home > end) end = home;
+  }
+  return end;
+}
+
+/** Last day an eased dose is still walking back to London. The home day itself if it never left. */
+export function easeHomeDay(
+  holidayStart: string,
+  holidayEnd: string,
+  step: number,
+  zoneForDay: (dayKey: string) => string,
+): string {
+  const pace = Math.max(1, step);
+  let cursor = holidayEnd;
+  for (let i = 0; i < 120; i++) {
+    const body = easeBody(cursor, 12, 0, holidayStart, holidayEnd, pace, zoneForDay);
+    const [year, month, day] = cursor.split("-").map(Number);
+    const london = offsetMinutes(HOME_TZ, zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0));
+    if (body === london && cursor > holidayEnd) return cursor;
+    if (body === london && cursor === holidayEnd) return holidayEnd;
+    cursor = shiftDayKey(cursor, 1);
+  }
+  return cursor;
+}
+
+function medicineDue(
+  medicine: Medicine,
+  dayKey: string,
+  holidayStart: string | null,
+  holidayEnd: string | null,
+  kitSavedDay: string | null,
+  step: number,
+  zoneForDay: (dayKey: string) => string,
+): boolean {
+  if (kitSavedDay && dayKey < kitSavedDay) return false;
+  if (onHoliday(dayKey, holidayStart, holidayEnd)) return true;
+  if (medicine.mode !== "ease" || !holidayStart || !holidayEnd || dayKey <= holidayEnd) return false;
+  return dayKey <= easeHomeDay(holidayStart, holidayEnd, step, zoneForDay);
 }
 
 function easeInstant(
@@ -427,10 +496,11 @@ function easeInstant(
   hour: number,
   minute: number,
   holidayStart: string,
+  holidayEnd: string | null,
   step: number,
   zoneForDay: (dayKey: string) => string,
 ): Date {
-  const body = easeBody(dayKey, hour, minute, holidayStart, step, zoneForDay);
+  const body = easeBody(dayKey, hour, minute, holidayStart, holidayEnd, step, zoneForDay);
   const [year, month, day] = dayKey.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day, hour, minute) - body * 60_000);
 }
@@ -447,12 +517,14 @@ function instantsFor(
   zoneForDay: (dayKey: string) => string,
 ): Date[] {
   const away = onHoliday(dayKey, holidayStart, holidayEnd);
-  if (!away || mode === "uk") return ukInstants(hour, minute, dayKey, zone);
+  if (mode === "uk" || !holidayStart) return ukInstants(hour, minute, dayKey, zone);
   if (mode === "local") {
+    if (!away || (holidayEnd && dayKey >= holidayEnd)) return ukInstants(hour, minute, dayKey, zone);
     const [year, month, day] = dayKey.split("-").map(Number);
     return [zonedTimeToUtc(zone, year, month, day, hour, minute)];
   }
-  return [easeInstant(dayKey, hour, minute, holidayStart!, Math.max(1, shiftMinutesPerDay), zoneForDay)];
+  if (!away && !(holidayEnd && dayKey > holidayEnd)) return ukInstants(hour, minute, dayKey, zone);
+  return [easeInstant(dayKey, hour, minute, holidayStart, holidayEnd, Math.max(1, shiftMinutesPerDay), zoneForDay)];
 }
 
 function wakeAdjusted(at: Date, zone: string): { at: Date; movedFrom: string | null } {
@@ -468,6 +540,8 @@ function decorate(
   slots: Slot[],
   previous: Slot[],
   labelZone: string,
+  dayKey: string,
+  holidayEnd: string | null,
   now: Date,
   leadMinutes: number,
   logs: Map<string, LogEntry>,
@@ -478,6 +552,7 @@ function decorate(
     const log = logs.get(key);
     const prior = previous.filter((item) => item.medicine.id === slot.medicine.id && item.hhmm === slot.hhmm).at(-1);
     const gapHours = prior ? (slot.at.getTime() - prior.at.getTime()) / 3_600_000 : null;
+    const ukLabel = formatHm(slot.at, HOME_TZ);
     return {
       key,
       medicineId: slot.medicine.id,
@@ -490,11 +565,12 @@ function decorate(
       hhmm: slot.hhmm,
       scheduledAt,
       localLabel: formatHm(slot.at, labelZone),
-      ukLabel: formatHm(slot.at, HOME_TZ),
+      ukLabel,
       movedFrom: slot.movedFrom,
       gapHours,
       state: doseState(slot.at, now, leadMinutes, log),
       snoozeUntil: log?.status === "snoozed" ? log.snoozeUntil ?? null : null,
+      returnHold: slot.medicine.mode === "ease" && holidayEnd === dayKey && ukLabel !== slot.hhmm,
     };
   });
 }
@@ -519,19 +595,41 @@ export function liveAgenda(args: {
   const holidayStart = args.holidayStart ?? null;
   const holidayEnd = args.holidayEnd ?? null;
   const kitSavedDay = args.kitSavedDay ?? null;
-  const slots = (key: string) =>
-    slotsForDay(args.medicines, key, args.zoneForDay, args.shiftMinutesPerDay, holidayStart, holidayEnd);
+  const slots = (key: string, dueOnly: boolean) =>
+    slotsForDay(
+      args.medicines,
+      key,
+      args.zoneForDay,
+      args.shiftMinutesPerDay,
+      holidayStart,
+      holidayEnd,
+      dueOnly,
+      kitSavedDay,
+    );
   const todayKey = args.dayKey;
   const prevKey = shiftDayKey(todayKey, -1);
   const beforeKey = shiftDayKey(todayKey, -2);
-  const due = (key: string) => doseDueOn(key, holidayStart, holidayEnd, kitSavedDay);
-  const doses = due(todayKey)
-    ? decorate(slots(todayKey), slots(prevKey), args.zoneForDay(todayKey), args.now, args.leadMinutes, logMap)
-    : [];
+  const doses = decorate(
+    slots(todayKey, true),
+    slots(prevKey, false),
+    args.zoneForDay(todayKey),
+    todayKey,
+    holidayEnd,
+    args.now,
+    args.leadMinutes,
+    logMap,
+  );
   if (!args.carryover) return { doses, carry: [] };
-  const yesterday = due(prevKey)
-    ? decorate(slots(prevKey), slots(beforeKey), args.zoneForDay(prevKey), args.now, args.leadMinutes, logMap)
-    : [];
+  const yesterday = decorate(
+    slots(prevKey, true),
+    slots(beforeKey, false),
+    args.zoneForDay(prevKey),
+    prevKey,
+    holidayEnd,
+    args.now,
+    args.leadMinutes,
+    logMap,
+  );
   const carry = yesterday.filter(
     (dose) => dose.state === "due" || dose.state === "overdue" || dose.state === "snoozed" || dose.state === "upcoming",
   );
@@ -580,10 +678,12 @@ export const MODE_LABEL: Record<ClockMode, string> = {
 
 export function clockLine(dose: DoseView, _zoneOffset?: number, _bodyOffset?: number): string {
   if (dose.mode === "ease") {
+    if (dose.returnHold) return "Has not jumped back yet";
     if (dose.ukLabel === dose.hhmm && dose.localLabel !== dose.ukLabel) return "Has not jumped yet";
     if (dose.localLabel === dose.hhmm && dose.ukLabel !== dose.hhmm) {
       return `${dose.localLabel} local · ${dose.ukLabel} London`;
     }
+    if (dose.ukLabel === dose.localLabel && dose.ukLabel !== dose.hhmm) return "Walking back toward London";
     if (dose.ukLabel === dose.localLabel) return "UK time, nothing is shifting";
     return `${dose.localLabel} here · ${dose.ukLabel} London, shifting`;
   }
@@ -603,10 +703,16 @@ export function easeNote(
     return "Nothing is shifting. Doses stay on UK time until you leave.";
   }
   if (dayKey === holidayStart) return "Has not jumped yet. Ease starts the day after you leave.";
-  if (dayKey > holidayEnd) return "Doses are back on UK time.";
+  if (dayKey === holidayEnd) return "Has not jumped back yet. Ease walks back toward London from tomorrow.";
   const step = Math.max(1, shiftMinutesPerDay);
-  const body = easeBody(dayKey, 12, 0, holidayStart, step, zoneForDay);
+  const body = easeBody(dayKey, 12, 0, holidayStart, holidayEnd, step, zoneForDay);
   const [year, month, day] = dayKey.split("-").map(Number);
+  const london = offsetMinutes(HOME_TZ, zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0));
+  if (dayKey > holidayEnd) {
+    if (body === london) return "Doses are back on UK time.";
+    const days = Math.max(1, Math.ceil(Math.abs(london - body) / step));
+    return `Walking back toward London. About ${days} day${days === 1 ? "" : "s"} to go.`;
+  }
   const zone = zoneForDay(dayKey) || HOME_TZ;
   const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, 12, 0));
   return easeSummary(body, target, step, place);
