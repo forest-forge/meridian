@@ -334,6 +334,18 @@ function onHoliday(dayKey: string, holidayStart: string | null, holidayEnd: stri
   return Boolean(holidayStart && holidayEnd && holidayError(holidayStart, holidayEnd) === null && dayKey >= holidayStart && dayKey <= holidayEnd);
 }
 
+/** A dose is due only on a holiday day, and not before the kit was saved. */
+export function doseDueOn(
+  dayKey: string,
+  holidayStart: string | null,
+  holidayEnd: string | null,
+  kitSavedDay: string | null = null,
+): boolean {
+  if (!onHoliday(dayKey, holidayStart, holidayEnd)) return false;
+  if (kitSavedDay && dayKey < kitSavedDay) return false;
+  return true;
+}
+
 function slotsForDay(
   medicines: Medicine[],
   dayKey: string,
@@ -501,25 +513,25 @@ export function liveAgenda(args: {
   carryover: boolean;
   holidayStart?: string | null;
   holidayEnd?: string | null;
+  kitSavedDay?: string | null;
 }): { doses: DoseView[]; carry: DoseView[] } {
   const logMap = new Map(args.logs.map((entry) => [entry.key, entry]));
   const holidayStart = args.holidayStart ?? null;
   const holidayEnd = args.holidayEnd ?? null;
+  const kitSavedDay = args.kitSavedDay ?? null;
   const slots = (key: string) =>
     slotsForDay(args.medicines, key, args.zoneForDay, args.shiftMinutesPerDay, holidayStart, holidayEnd);
   const todayKey = args.dayKey;
   const prevKey = shiftDayKey(todayKey, -1);
   const beforeKey = shiftDayKey(todayKey, -2);
-  const doses = decorate(slots(todayKey), slots(prevKey), args.zoneForDay(todayKey), args.now, args.leadMinutes, logMap);
+  const due = (key: string) => doseDueOn(key, holidayStart, holidayEnd, kitSavedDay);
+  const doses = due(todayKey)
+    ? decorate(slots(todayKey), slots(prevKey), args.zoneForDay(todayKey), args.now, args.leadMinutes, logMap)
+    : [];
   if (!args.carryover) return { doses, carry: [] };
-  const yesterday = decorate(
-    slots(prevKey),
-    slots(beforeKey),
-    args.zoneForDay(prevKey),
-    args.now,
-    args.leadMinutes,
-    logMap,
-  );
+  const yesterday = due(prevKey)
+    ? decorate(slots(prevKey), slots(beforeKey), args.zoneForDay(prevKey), args.now, args.leadMinutes, logMap)
+    : [];
   const carry = yesterday.filter(
     (dose) => dose.state === "due" || dose.state === "overdue" || dose.state === "snoozed" || dose.state === "upcoming",
   );

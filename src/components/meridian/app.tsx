@@ -116,6 +116,7 @@ function Ready() {
       carryover: true,
       holidayStart: state.holidayStart,
       holidayEnd: state.holidayEnd,
+      kitSavedDay: state.kitSavedAt ? dayKeyInZone(new Date(state.kitSavedAt), HOME_TZ) : null,
     });
     const open = [...carry, ...doses].filter(
       (dose) => dose.state === "upcoming" || dose.state === "due" || dose.state === "overdue",

@@ -47,6 +47,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const logDose = useMeridian((s) => s.logDose);
   const holidayStart = useMeridian((s) => s.holidayStart);
   const holidayEnd = useMeridian((s) => s.holidayEnd);
+  const kitSavedAt = useMeridian((s) => s.kitSavedAt);
   const { now, phoneTz, planDay, setPlanDay } = shell;
 
   const zoneForSchedule = (key: string) => scheduleZoneForDay(key, legs, choice);
@@ -75,6 +76,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
     carryover: !planning,
     holidayStart,
     holidayEnd,
+    kitSavedDay: kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null,
   });
 
   const open = [
@@ -176,9 +178,9 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
           onEdit={() => onEdit(hero.medicineId)}
           now={now}
         />
-      ) : (
+      ) : doses.length === 0 && carry.length === 0 ? (
         <p className="text-sm text-muted">Nothing scheduled this day.</p>
-      )}
+      ) : null}
 
       {restOpen.length > 0 ? (
         <Section title="Also open">

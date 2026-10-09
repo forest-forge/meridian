@@ -25,6 +25,7 @@ export function History() {
   const choice = useMeridian((s) => s.zoneChoice);
   const holidayStart = useMeridian((s) => s.holidayStart);
   const holidayEnd = useMeridian((s) => s.holidayEnd);
+  const kitSavedAt = useMeridian((s) => s.kitSavedAt);
   const { now, phoneTz } = useShell();
   const zones = (key: string) => scheduleZoneForDay(key, legs, choice);
   const today = dayKeyInZone(now, zones(dayKeyInZone(now, HOME_TZ)));
@@ -46,8 +47,10 @@ export function History() {
       carryover: false,
       holidayStart,
       holidayEnd,
+      kitSavedDay: kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null,
     });
-    return { dayKey, doses: doses.filter((dose) => dose.state !== "later" || dayKey !== today) };
+    const logged = doses.filter((dose) => dose.state === "taken" || dose.state === "skipped" || dose.state === "missed");
+    return { dayKey, doses: logged };
   });
 
   const any = groups.some((group) => group.doses.length > 0);

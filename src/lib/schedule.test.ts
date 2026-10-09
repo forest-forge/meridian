@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { buildSample } from "./sample.ts";
 import {
   clockLine,
+  doseDueOn,
   easeNote,
   gapLabel,
   holidayError,
@@ -17,9 +18,10 @@ import {
   tripSpanDays,
   validateLegs,
   zoneForInstant,
+  type LogEntry,
   type Medicine,
 } from "./schedule.ts";
-import { HOME_TZ, formatDayKey, pairedClock, phoneZoneName, ukOffsetLabel, zoneAbbrev, zonedTimeToUtc } from "./time.ts";
+import { HOME_TZ, countdown, formatDayKey, pairedClock, phoneZoneName, ukOffsetLabel, zoneAbbrev, zonedTimeToUtc } from "./time.ts";
 
 describe("time zones", () => {
   it("converts a UK morning in BST to UTC", () => {
@@ -129,12 +131,9 @@ describe("ease from the leave date", () => {
     });
   }
 
-  it("stays on UK time before the trip, even if the journey was saved earlier", () => {
-    const dose = day("2026-10-09").doses.find((item) => item.medicineId === "ramipril");
-    assert.ok(dose);
-    assert.equal(dose.ukLabel, "08:00");
-    assert.equal(dose.localLabel, "08:00");
-    assert.match(clockLine(dose), /nothing is shifting/);
+  it("schedules nothing before you leave", () => {
+    assert.equal(day("2026-10-09").doses.length, 0);
+    assert.equal(day("2026-10-09").carry.length, 0);
     const note = easeNote("2026-10-09", "2026-11-02", "2026-11-16", 60, zoneForDay, "United Kingdom");
     assert.match(note, /Nothing is shifting/);
     assert.doesNotMatch(note, /behind/);
@@ -194,11 +193,8 @@ describe("ease from the leave date", () => {
     assert.equal(settled?.gapHours, 24);
   });
 
-  it("is back on UK time after the home date", () => {
-    const dose = day("2026-11-17").doses[0];
-    assert.equal(dose?.ukLabel, "08:00");
-    assert.equal(dose?.localLabel, "08:00");
-    assert.match(clockLine(dose!), /nothing is shifting/);
+  it("schedules nothing after the home date", () => {
+    assert.equal(day("2026-11-17").doses.length, 0);
     assert.match(easeNote("2026-11-17", "2026-11-02", "2026-11-16", 60, zoneForDay, "Paris"), /back on UK time/);
   });
 });
@@ -323,9 +319,9 @@ describe("sample holiday", () => {
     assert.equal(doses[0].localLabel, "05:00");
   });
 
-  it("keeps doses on UK time outside the holiday dates", () => {
+  it("schedules nothing outside the holiday dates", () => {
     const zone = "Asia/Singapore";
-    const { doses } = liveAgenda({
+    const { doses, carry } = liveAgenda({
       medicines: sample.medicines,
       dayKey: "2026-10-09",
       labelZone: zone,
@@ -336,19 +332,85 @@ describe("sample holiday", () => {
       clock: sample.bodyClock,
       shiftMinutesPerDay: 60,
       targetAt: () => 0,
-      carryover: false,
+      carryover: true,
       holidayStart: "2026-11-01",
       holidayEnd: "2026-11-20",
     });
-    const morning = doses.find((dose) => dose.medicineId === "med-morning");
-    assert.ok(morning);
-    assert.equal(morning.ukLabel, "08:00");
-    assert.equal(morning.localLabel, "15:00");
-    const eased = doses.find((dose) => dose.medicineId === "med-empty");
-    assert.equal(eased?.ukLabel, "07:00");
-    assert.match(clockLine(eased!), /Has not jumped yet/);
+    assert.equal(doses.length, 0);
+    assert.equal(carry.length, 0);
     const note = easeNote("2026-10-09", "2026-11-01", "2026-11-20", 60, () => "Europe/London", "United Kingdom");
     assert.match(note, /Nothing is shifting/);
     assert.doesNotMatch(note, /behind/);
+  });
+});
+
+describe("missed doses", () => {
+  const now = new Date("2026-10-09T20:46:00.000Z");
+  const ramipril: Medicine = {
+    id: "ramipril",
+    name: "Ramipril",
+    dose: "5 mg",
+    times: ["08:00"],
+    food: "either",
+    water: "either",
+    notes: "",
+    mode: "ease",
+    active: true,
+    startDate: null,
+    endDate: null,
+  };
+
+  function agenda(dayKey: string, holidayStart: string, holidayEnd: string, logs: LogEntry[] = []) {
+    return liveAgenda({
+      medicines: [ramipril],
+      dayKey,
+      labelZone: "Europe/London",
+      zoneForDay: () => "Europe/London",
+      now,
+      leadMinutes: 15,
+      logs,
+      clock: { offsetMinutes: 60, asOf: "2026-10-09T08:00:00.000Z" },
+      shiftMinutesPerDay: 60,
+      targetAt: () => 60,
+      carryover: true,
+      holidayStart,
+      holidayEnd,
+      kitSavedDay: "2026-10-09",
+    });
+  }
+
+  it("shows no missed Ramipril when the holiday ended before the kit was saved", () => {
+    assert.equal(doseDueOn("2026-08-02", "2026-08-02", "2026-08-16", "2026-10-09"), false);
+    for (const key of ["2026-08-02", "2026-08-16", "2026-10-08", "2026-10-09"]) {
+      const { doses, carry } = agenda(key, "2026-08-02", "2026-08-16");
+      assert.equal(doses.length, 0, key);
+      assert.equal(carry.length, 0, key);
+    }
+  });
+
+  it("shows only today's 08:00 once the holiday includes the day the kit was saved", () => {
+    const today = agenda("2026-10-09", "2026-10-02", "2026-10-16");
+    assert.equal(today.carry.length, 0);
+    assert.equal(today.doses.length, 1);
+    const dose = today.doses[0]!;
+    assert.equal(dose.hhmm, "08:00");
+    assert.equal(dose.ukLabel, "08:00");
+    assert.equal(dose.state, "missed");
+    assert.equal(countdown(new Date(dose.scheduledAt), now), "13 h 46 min overdue");
+    const beforeKit = agenda("2026-10-08", "2026-10-02", "2026-10-16");
+    assert.equal(beforeKit.doses.length, 0);
+    const marked = (status: "taken" | "skipped") =>
+      agenda("2026-10-09", "2026-10-02", "2026-10-16", [
+        {
+          key: dose.key,
+          medicineId: dose.medicineId,
+          medicineName: dose.name,
+          scheduledAt: dose.scheduledAt,
+          status,
+          actedAt: now.toISOString(),
+        },
+      ]);
+    assert.equal(marked("taken").doses[0]?.state, "taken");
+    assert.equal(marked("skipped").doses[0]?.state, "skipped");
   });
 });

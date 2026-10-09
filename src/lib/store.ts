@@ -29,6 +29,7 @@ export type MeridianData = {
   holidayEnd: string | null;
   wizardDone: boolean;
   setupRev: number;
+  kitSavedAt: string | null;
   wallet: Wallet;
 };
 
@@ -82,6 +83,7 @@ const initial = (): MeridianData => ({
   holidayEnd: null,
   wizardDone: false,
   setupRev: 0,
+  kitSavedAt: null,
   wallet: emptyWallet(),
 });
 
@@ -104,6 +106,7 @@ export const useMeridian = create<MeridianData & Actions>()(
           holidayEnd: sample.holidayEnd,
           wizardDone: true,
           setupRev: 2,
+          kitSavedAt: new Date().toISOString(),
         });
       },
       clearAll: (now) =>
@@ -118,6 +121,7 @@ export const useMeridian = create<MeridianData & Actions>()(
           holidayStart: null,
           holidayEnd: null,
           wizardDone: false,
+          kitSavedAt: null,
         }),
       dismissSampleNote: () => set({ sampleNote: false }),
       saveMedicine: (medicine) =>
@@ -194,10 +198,17 @@ export const useMeridian = create<MeridianData & Actions>()(
           seeded: true,
           wizardDone: false,
           setupRev: 2,
+          kitSavedAt: null,
           zoneChoice: { source: "journey" },
         });
       },
-      finishWizard: () => set({ wizardDone: true, seeded: true, sampleNote: false }),
+      finishWizard: () =>
+        set((state) => ({
+          wizardDone: true,
+          seeded: true,
+          sampleNote: false,
+          kitSavedAt: state.kitSavedAt ?? new Date().toISOString(),
+        })),
       setWallet: (wallet) => set({ wallet }),
     }),
     {
@@ -219,7 +230,14 @@ export const useMeridian = create<MeridianData & Actions>()(
         holidayEnd: state.holidayEnd,
         wizardDone: state.wizardDone,
         setupRev: state.setupRev,
+        kitSavedAt: state.kitSavedAt,
       }),
+      version: 2,
+      migrate: (persisted) => {
+        const state = persisted as MeridianData;
+        if (state.wizardDone && !state.kitSavedAt) state.kitSavedAt = new Date().toISOString();
+        return state;
+      },
     },
   ),
 );
