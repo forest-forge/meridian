@@ -3,7 +3,7 @@ import { PLACES, PLACE_GROUPS } from "@/lib/places";
 import { holidayError, holidayLength, slideHoliday, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { formatDayKey, formatWallInput, offsetOnDay, shiftDayKey, wallToUtc } from "@/lib/time";
-import { downloadTripCalendar, downloadTripSheet } from "@/lib/print-trip";
+import { downloadTripCalendar, downloadTripPdf, viewTripPdf } from "@/lib/print-trip";
 import { cn } from "@/lib/cn";
 import { Button } from "./ui";
 import { WalletCard } from "./wallet-card";
@@ -199,12 +199,10 @@ export function Wizard() {
     finishWizard();
   }
 
-  async function download() {
-    if (!saveTrip()) return;
-    startFromUk(new Date());
+  function tripFile() {
     const state = useMeridian.getState();
-    if (!state.holidayStart || !state.holidayEnd) return;
-    const opened = await downloadTripSheet({
+    if (!state.holidayStart || !state.holidayEnd) return null;
+    return {
       medicines: state.medicines,
       legs: state.legs,
       holidayStart: state.holidayStart,
@@ -212,8 +210,25 @@ export function Wizard() {
       wallet: state.wallet,
       clock: state.bodyClock,
       shiftMinutesPerDay: state.shiftMinutesPerDay,
-    });
-    if (!opened) setError("The trip could not open. Try again.");
+    };
+  }
+
+  async function viewPdf() {
+    if (!saveTrip()) return;
+    startFromUk(new Date());
+    const file = tripFile();
+    if (!file) return;
+    const opened = await viewTripPdf(file);
+    if (!opened) setError("The PDF could not open. Try Download PDF.");
+  }
+
+  async function downloadPdf() {
+    if (!saveTrip()) return;
+    startFromUk(new Date());
+    const file = tripFile();
+    if (!file) return;
+    const opened = await downloadTripPdf(file);
+    if (!opened) setError("The PDF could not be saved. Try again.");
   }
 
   async function calendar() {
@@ -338,7 +353,10 @@ export function Wizard() {
         {error || dateError ? <p className="mt-1 text-sm text-danger">{error ?? dateError}</p> : null}
 
         <div className="mt-3 grid gap-2">
-          <Button variant="quiet" onClick={download}>Download printable trip</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="quiet" onClick={viewPdf}>View PDF</Button>
+            <Button variant="quiet" onClick={downloadPdf}>Download PDF</Button>
+          </div>
           <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
           <div className="grid grid-cols-2 gap-2">
             <Button variant="quiet" onClick={() => { setError(null); setStep("medicines"); }}>Back</Button>

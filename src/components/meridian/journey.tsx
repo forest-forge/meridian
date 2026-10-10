@@ -2,7 +2,7 @@ import { useState } from "react";
 import { easeJourneyLine, holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, offsetOnDay, ukOffsetLabel, wallToUtc, zoneAbbrev } from "@/lib/time";
-import { downloadTripCalendar, downloadTripSheet, runOutDay } from "@/lib/print-trip";
+import { downloadTripCalendar, downloadTripPdf, runOutDay, viewTripPdf } from "@/lib/print-trip";
 import { useShell } from "./shell";
 import { HolidayDates } from "./editors";
 import { WalletCard } from "./wallet-card";
@@ -40,11 +40,25 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
 
   const [fileNote, setFileNote] = useState<string | null>(null);
 
-  async function download() {
-    if (!holidayStart || !holidayEnd) return;
+  function tripFile() {
+    if (!holidayStart || !holidayEnd) return null;
+    return { medicines, legs, holidayStart, holidayEnd, wallet, clock, shiftMinutesPerDay: shift };
+  }
+
+  async function viewPdf() {
+    const file = tripFile();
+    if (!file) return;
     setFileNote(null);
-    const opened = await downloadTripSheet({ medicines, legs, holidayStart, holidayEnd, wallet, clock, shiftMinutesPerDay: shift });
-    if (!opened) setFileNote("The trip could not open. Try again.");
+    const opened = await viewTripPdf(file);
+    if (!opened) setFileNote("The PDF could not open. Try Download PDF.");
+  }
+
+  async function downloadPdf() {
+    const file = tripFile();
+    if (!file) return;
+    setFileNote(null);
+    const opened = await downloadTripPdf(file);
+    if (!opened) setFileNote("The PDF could not be saved. Try again.");
   }
 
   async function calendar() {
@@ -67,7 +81,10 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
       <HolidayDates />
       {holidayStart && holidayEnd ? (
         <div className="grid gap-2">
-          <Button variant="quiet" onClick={download}>Download printable trip</Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="quiet" onClick={viewPdf}>View PDF</Button>
+            <Button variant="quiet" onClick={downloadPdf}>Download PDF</Button>
+          </div>
           <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
           {fileNote ? <p className="text-sm text-danger">{fileNote}</p> : null}
           {shortPack.map(({ medicine, out }) => (

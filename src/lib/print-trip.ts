@@ -1,3 +1,4 @@
+import { jsPDF } from "jspdf";
 import {
   FOOD_LABEL,
   WATER_LABEL,
@@ -14,7 +15,7 @@ import { walletLines } from "./wallet.ts";
 import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 import type { BodyClock } from "./schedule.ts";
 
-export async function downloadTripSheet(args: {
+export type TripFile = {
   medicines: Medicine[];
   legs: Leg[];
   holidayStart: string;
@@ -22,17 +23,23 @@ export async function downloadTripSheet(args: {
   wallet: Wallet;
   clock: BodyClock;
   shiftMinutesPerDay: number;
-}): Promise<boolean> {
-  const html = tripHtml(args);
-  const blob = new Blob([html], { type: "text/html" });
-  const page = window.open("", "_blank");
-  if (page) {
-    page.document.open();
-    page.document.write(html);
-    page.document.close();
-    return true;
-  }
-  return saveFile(blob, `meridian-${args.holidayStart}.html`, "text/html");
+};
+
+export async function viewTripPdf(args: TripFile): Promise<boolean> {
+  const blob = tripPdf(args);
+  const url = URL.createObjectURL(blob);
+  const page = window.open(url, "_blank");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return Boolean(page);
+}
+
+export async function downloadTripPdf(args: TripFile): Promise<boolean> {
+  const blob = tripPdf(args);
+  return saveFile(blob, `meridian-${args.holidayStart}.pdf`, "application/pdf");
+}
+
+export async function downloadTripSheet(args: TripFile): Promise<boolean> {
+  return downloadTripPdf(args);
 }
 
 export async function downloadTripCalendar(args: {
@@ -79,6 +86,93 @@ async function saveFile(blob: Blob, name: string, type: string): Promise<boolean
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   return true;
+}
+
+export function tripPdf(args: TripFile): Blob {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  const left = 14;
+  const right = width - 14;
+  let y = 18;
+
+  const gap = (n = 5) => {
+    y += n;
+    if (y > height - 16) {
+      doc.addPage();
+      y = 18;
+    }
+  };
+  const write = (value: string, size = 11, style: "normal" | "bold" = "normal") => {
+    doc.setFont("times", style);
+    doc.setFontSize(size);
+    const lines = doc.splitTextToSize(value, right - left) as string[];
+    for (const line of lines) {
+      if (y > height - 16) {
+        doc.addPage();
+        y = 18;
+      }
+      doc.text(line, left, y);
+      y += size * 0.45;
+    }
+  };
+
+  write("Meridian", 22);
+  gap(2);
+  write(`${formatDayKey(args.holidayStart)} to ${formatDayKey(args.holidayEnd)}. Times are local. UK time is beside them.`, 11);
+  const lines = walletLines(args.wallet);
+  if (lines.length > 0) {
+    gap(6);
+    write("Wallet card", 14, "bold");
+    for (const [label, value] of lines) write(`${label}. ${value}`);
+  }
+  gap(6);
+  write("Kit", 14, "bold");
+  if (args.medicines.length === 0) write("No medicines.");
+  for (const medicine of args.medicines) {
+    const out = runOutDay(medicine, args.holidayStart);
+    const supply = out ? ` Pack runs out ${formatDayKey(out)}.` : "";
+    const held = medicine.holdTime ? " Time is held, not moved for sleep." : "";
+    write(`${medicine.name} ${medicine.dose} at ${medicine.times.join(", ")} UK.${supply}${held}`);
+  }
+
+  const choice = { source: "journey" as const };
+  const targetAt = makeTargetAt(args.legs, choice, HOME_TZ);
+  const zones = (key: string) => scheduleZoneForDay(key, args.legs, choice);
+  const lastDay = scheduleEnd(args.medicines, args.holidayStart, args.holidayEnd, args.shiftMinutesPerDay, zones);
+  for (let day = args.holidayStart; day <= lastDay; day = shiftDayKey(day, 1)) {
+    const zone = scheduleZoneForDay(day, args.legs, choice);
+    const [year, month, date] = day.split("-").map(Number);
+    const localNoon = zonedTimeToUtc(zone, year, month, date, 12, 0);
+    const londonNoon = zonedTimeToUtc(HOME_TZ, year, month, date, 12, 0);
+    const place = placeLabel(args.legs, zone, localNoon);
+    const offset = ukOffsetLabel(zone, londonNoon);
+    const { doses } = liveAgenda({
+      medicines: args.medicines,
+      dayKey: day,
+      labelZone: zone,
+      zoneForDay: zones,
+      now: new Date(`${day}T00:00:00Z`),
+      leadMinutes: 0,
+      logs: [],
+      clock: args.clock,
+      shiftMinutesPerDay: args.shiftMinutesPerDay,
+      targetAt,
+      carryover: false,
+      holidayStart: args.holidayStart,
+      holidayEnd: args.holidayEnd,
+    });
+    gap(5);
+    write(`${formatDayKey(day)} · ${place} ${offset}`, 13, "bold");
+    if (doses.length === 0) write("No doses.");
+    for (const dose of doses) {
+      const moved = dose.movedFrom ? ` Moved from ${dose.movedFrom} (asleep until 06:00).` : "";
+      write(`${dose.localLabel} local, ${dose.ukLabel} UK. ${dose.name} ${dose.dose}. ${FOOD_LABEL[dose.food]}. ${WATER_LABEL[dose.water]}.${moved}`);
+    }
+  }
+  gap(8);
+  write("Not medical advice. Eased doses walk about an hour a day toward local time from the day you leave. Doses between midnight and 06:00 local move to 06:00 unless that medicine is marked hold. Import the calendar file so the phone alarms at each dose.", 10);
+  return doc.output("blob");
 }
 
 export function tripHtml(args: {
