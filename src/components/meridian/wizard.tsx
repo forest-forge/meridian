@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { PLACES, PLACE_GROUPS } from "@/lib/places";
 import { holidayError, holidayLength, slideHoliday, type ClockMode, type FoodRule, type Medicine, type WaterRule } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
@@ -63,10 +63,18 @@ export function Wizard() {
   const startFromUk = useMeridian((s) => s.startFromUk);
   const wallet = useMeridian((s) => s.wallet);
   const setWallet = useMeridian((s) => s.setWallet);
+  const stops = useMeridian((s) => s.wizardStops);
+  const setStops = useMeridian((s) => s.setWizardStops);
+  const step = useMeridian((s) => s.wizardStep);
+  const setStep = useMeridian((s) => s.setWizardStep);
+  const legs = useMeridian((s) => s.legs);
 
-  const [step, setStep] = useState<"medicines" | "trip">("medicines");
+  useEffect(() => {
+    if (stops.length > 0 || legs.length === 0) return;
+    setStops(legs.map((leg) => ({ place: leg.place, from: leg.arrive.slice(0, 10) })).sort((a, b) => a.from.localeCompare(b.from)));
+  }, [legs, setStops, stops.length]);
+
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [stops, setStops] = useState<Stop[]>([]);
   const [place, setPlace] = useState("");
   const [from, setFrom] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -191,12 +199,12 @@ export function Wizard() {
     finishWizard();
   }
 
-  function download() {
+  async function download() {
     if (!saveTrip()) return;
     startFromUk(new Date());
     const state = useMeridian.getState();
     if (!state.holidayStart || !state.holidayEnd) return;
-    downloadTripSheet({
+    const opened = await downloadTripSheet({
       medicines: state.medicines,
       legs: state.legs,
       holidayStart: state.holidayStart,
@@ -205,14 +213,19 @@ export function Wizard() {
       clock: state.bodyClock,
       shiftMinutesPerDay: state.shiftMinutesPerDay,
     });
+    if (!opened) setError("The trip could not open. Try again.");
   }
 
-  function calendar() {
+  async function calendar() {
     if (!saveTrip()) return;
     startFromUk(new Date());
     const state = useMeridian.getState();
     if (!state.holidayStart || !state.holidayEnd) return;
-    downloadTripCalendar({
+    if (state.medicines.length === 0) {
+      setError("Add a medicine before the calendar alarms.");
+      return;
+    }
+    const opened = await downloadTripCalendar({
       medicines: state.medicines,
       legs: state.legs,
       holidayStart: state.holidayStart,
@@ -220,6 +233,7 @@ export function Wizard() {
       clock: state.bodyClock,
       shiftMinutesPerDay: state.shiftMinutesPerDay,
     });
+    if (!opened) setError("The calendar file could not open. Add a medicine and try again.");
   }
 
   function saveTrip(): boolean {
@@ -251,7 +265,6 @@ export function Wizard() {
               <input type="date" aria-label="Leave" className={control} value={holidayStart ?? ""} onChange={(event) => {
                 const next = event.target.value || null;
                 const slid = slideHoliday(holidayStart, holidayEnd, next, holidayEnd);
-                if (slid.delta !== 0) setStops((current) => current.map((stop) => ({ ...stop, from: shiftDayKey(stop.from, slid.delta) })));
                 setHoliday(slid.start, slid.end);
                 setError(null);
               }} />
@@ -260,7 +273,6 @@ export function Wizard() {
               <input type="date" aria-label="Home" className={control} value={holidayEnd ?? ""} onChange={(event) => {
                 const next = event.target.value || null;
                 const slid = slideHoliday(holidayStart, holidayEnd, holidayStart, next);
-                if (slid.delta !== 0) setStops((current) => current.map((stop) => ({ ...stop, from: shiftDayKey(stop.from, slid.delta) })));
                 setHoliday(slid.start, slid.end);
                 setError(null);
               }} />

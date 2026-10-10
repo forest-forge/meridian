@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { easeJourneyLine, holidayError, holidayLength, legRange, placeLabel, scheduleZoneForDay, sortedLegs, stopLengthDays, zoneForInstant, type ZoneChoice } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
 import { HOME_TZ, cityFromZone, dayKeyInZone, formatDayKey, formatShortWhen, offsetOnDay, ukOffsetLabel, wallToUtc, zoneAbbrev } from "@/lib/time";
@@ -37,14 +38,24 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
   const holidayDays =
     holidayStart && holidayEnd && !holidayError(holidayStart, holidayEnd) ? holidayLength(holidayStart, holidayEnd) : 0;
 
-  function download() {
+  const [fileNote, setFileNote] = useState<string | null>(null);
+
+  async function download() {
     if (!holidayStart || !holidayEnd) return;
-    downloadTripSheet({ medicines, legs, holidayStart, holidayEnd, wallet, clock, shiftMinutesPerDay: shift });
+    setFileNote(null);
+    const opened = await downloadTripSheet({ medicines, legs, holidayStart, holidayEnd, wallet, clock, shiftMinutesPerDay: shift });
+    if (!opened) setFileNote("The trip could not open. Try again.");
   }
 
-  function calendar() {
+  async function calendar() {
     if (!holidayStart || !holidayEnd) return;
-    downloadTripCalendar({ medicines, legs, holidayStart, holidayEnd, clock, shiftMinutesPerDay: shift });
+    if (medicines.length === 0) {
+      setFileNote("Add a medicine before the calendar alarms.");
+      return;
+    }
+    setFileNote(null);
+    const opened = await downloadTripCalendar({ medicines, legs, holidayStart, holidayEnd, clock, shiftMinutesPerDay: shift });
+    if (!opened) setFileNote("The calendar file could not open. Try again.");
   }
 
   return (
@@ -58,6 +69,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
         <div className="grid gap-2">
           <Button variant="quiet" onClick={download}>Download printable trip</Button>
           <Button variant="quiet" onClick={calendar}>Add alarms to calendar</Button>
+          {fileNote ? <p className="text-sm text-danger">{fileNote}</p> : null}
           {shortPack.map(({ medicine, out }) => (
             <p key={medicine.id} className="text-sm text-subtle">
               {medicine.name} runs out {formatDayKey(out)}, before you get home on {formatDayKey(holidayEnd!)}.

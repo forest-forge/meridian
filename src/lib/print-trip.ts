@@ -14,7 +14,7 @@ import { walletLines } from "./wallet.ts";
 import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 import type { BodyClock } from "./schedule.ts";
 
-export function downloadTripSheet(args: {
+export async function downloadTripSheet(args: {
   medicines: Medicine[];
   legs: Leg[];
   holidayStart: string;
@@ -22,29 +22,31 @@ export function downloadTripSheet(args: {
   wallet: Wallet;
   clock: BodyClock;
   shiftMinutesPerDay: number;
-}): void {
+}): Promise<boolean> {
   const html = tripHtml(args);
+  const blob = new Blob([html], { type: "text/html" });
   const page = window.open("", "_blank");
   if (page) {
     page.document.open();
     page.document.write(html);
     page.document.close();
-    return;
+    return true;
   }
-  const blob = new Blob([html], { type: "text/html" });
-  saveBlob(blob, `meridian-${args.holidayStart}.html`);
+  return saveFile(blob, `meridian-${args.holidayStart}.html`, "text/html");
 }
 
-export function downloadTripCalendar(args: {
+export async function downloadTripCalendar(args: {
   medicines: Medicine[];
   legs: Leg[];
   holidayStart: string;
   holidayEnd: string;
   clock: BodyClock;
   shiftMinutesPerDay: number;
-}): void {
-  const blob = new Blob([tripIcs(args)], { type: "text/calendar" });
-  saveBlob(blob, `meridian-${args.holidayStart}.ics`);
+}): Promise<boolean> {
+  const ics = tripIcs(args).replace(/\n/g, "\r\n");
+  if (!ics.includes("BEGIN:VEVENT")) return false;
+  const blob = new Blob([ics], { type: "text/calendar" });
+  return saveFile(blob, `meridian-${args.holidayStart}.ics`, "text/calendar");
 }
 
 export function runOutDay(medicine: Medicine, holidayStart: string): string | null {
@@ -55,13 +57,28 @@ export function runOutDay(medicine: Medicine, holidayStart: string): string | nu
   return shiftDayKey(holidayStart, days - 1);
 }
 
-function saveBlob(blob: Blob, name: string) {
+async function saveFile(blob: Blob, name: string, type: string): Promise<boolean> {
+  const file = new File([blob], name, { type });
+  const share = navigator.share?.bind(navigator);
+  const canShare = navigator.canShare?.({ files: [file] });
+  if (share && canShare) {
+    try {
+      await share({ files: [file], title: name });
+      return true;
+    } catch {
+      // The person cancelled, or this browser will not share a file. Fall through to a download.
+    }
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
+  link.rel = "noopener";
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
 }
 
 export function tripHtml(args: {
@@ -220,7 +237,7 @@ END:VEVENT`);
 VERSION:2.0
 PRODID:-//Meridian//Trip//EN
 CALSCALE:GREGORIAN
-METHOD:PUBLISH
+X-WR-CALNAME:Meridian
 ${events.join("\n")}
 END:VCALENDAR
 `;

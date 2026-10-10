@@ -3,7 +3,9 @@ import { persist } from "zustand/middleware";
 import type { BodyClock, Leg, LogEntry, Medicine, ZoneChoice } from "./schedule";
 import { shiftLegs, slideHoliday, validateLegs, zoneForInstant } from "./schedule";
 import { buildSample } from "./sample";
-import { HOME_TZ, dayKeyInZone, localDayBounds, offsetMinutes, zonedTimeToUtc } from "./time";
+import { HOME_TZ, dayKeyInZone, localDayBounds, offsetMinutes, shiftDayKey, zonedTimeToUtc } from "./time";
+
+export type WizardStop = { place: string; from: string };
 
 export type Wallet = {
   name: string;
@@ -31,6 +33,8 @@ export type MeridianData = {
   setupRev: number;
   kitSavedAt: string | null;
   wallet: Wallet;
+  wizardStops: WizardStop[];
+  wizardStep: "medicines" | "trip";
 };
 
 type Actions = {
@@ -52,6 +56,8 @@ type Actions = {
   beginSetup: () => void;
   finishWizard: () => void;
   setWallet: (wallet: Wallet) => void;
+  setWizardStops: (stops: WizardStop[]) => void;
+  setWizardStep: (step: "medicines" | "trip") => void;
 };
 
 const emptyClock = (now: Date): BodyClock => ({
@@ -85,6 +91,8 @@ const initial = (): MeridianData => ({
   setupRev: 0,
   kitSavedAt: null,
   wallet: emptyWallet(),
+  wizardStops: [],
+  wizardStep: "medicines",
 });
 
 export const useMeridian = create<MeridianData & Actions>()(
@@ -125,6 +133,8 @@ export const useMeridian = create<MeridianData & Actions>()(
           wizardDone: false,
           kitSavedAt: null,
           wallet: emptyWallet(),
+          wizardStops: [],
+          wizardStep: "medicines",
         }),
       dismissSampleNote: () => set({ sampleNote: false }),
       saveMedicine: (medicine) =>
@@ -190,11 +200,13 @@ export const useMeridian = create<MeridianData & Actions>()(
               return { ...leg, depart: `${slid.end}${leg.depart.slice(10)}` };
             });
           }
+          const wizardStops = slid.delta === 0 ? state.wizardStops : state.wizardStops.map((stop) => ({ ...stop, from: shiftDayKey(stop.from, slid.delta) }));
           return {
             holidayStart: slid.start,
             holidayEnd: slid.end,
             sampleNote: false,
             legs,
+            wizardStops,
           };
         }),
       beginSetup: () => {
@@ -222,6 +234,8 @@ export const useMeridian = create<MeridianData & Actions>()(
           kitSavedAt: state.kitSavedAt ?? new Date().toISOString(),
         })),
       setWallet: (wallet) => set({ wallet }),
+      setWizardStops: (wizardStops) => set({ wizardStops }),
+      setWizardStep: (wizardStep) => set({ wizardStep }),
     }),
     {
       name: "meridian-v1",
@@ -244,6 +258,8 @@ export const useMeridian = create<MeridianData & Actions>()(
         setupRev: state.setupRev,
         kitSavedAt: state.kitSavedAt,
         wallet: state.wallet,
+        wizardStops: state.wizardStops ?? [],
+        wizardStep: state.wizardStep ?? "medicines",
       }),
       version: 2,
       migrate: (persisted) => {
