@@ -249,6 +249,7 @@ export function Wizard() {
       shiftMinutesPerDay: state.shiftMinutesPerDay,
     });
     if (!opened) setError("The calendar file could not open. Add a medicine and try again.");
+    else setError("Open it in Calendar and add all. Each dose has an alarm 15 minutes before, and never before 06:00.");
   }
 
   function saveTrip(): boolean {

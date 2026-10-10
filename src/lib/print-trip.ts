@@ -12,7 +12,7 @@ import {
 } from "./schedule.ts";
 import type { Wallet } from "./store.ts";
 import { walletLines } from "./wallet.ts";
-import { HOME_TZ, formatDayKey, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
+import { HOME_TZ, formatDayKey, partsInZone, shiftDayKey, ukOffsetLabel, zonedTimeToUtc } from "./time.ts";
 import type { BodyClock } from "./schedule.ts";
 
 export type TripFile = {
@@ -52,8 +52,40 @@ export async function downloadTripCalendar(args: {
 }): Promise<boolean> {
   const ics = tripIcs(args).replace(/\n/g, "\r\n");
   if (!ics.includes("BEGIN:VEVENT")) return false;
-  const blob = new Blob([ics], { type: "text/calendar" });
-  return saveFile(blob, `meridian-${args.holidayStart}.ics`, "text/calendar");
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const file = new File([blob], `meridian-${args.holidayStart}.ics`, { type: "text/calendar" });
+  const url = URL.createObjectURL(blob);
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  // A phone adds the alarms only if Calendar opens the file. A plain download does not.
+  if (ios) {
+    window.location.assign(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return true;
+  }
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return true;
+  }
+  const share = navigator.share?.bind(navigator);
+  if (share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await share({ files: [file], title: "Meridian alarms" });
+      URL.revokeObjectURL(url);
+      return true;
+    } catch {
+      // Cancelled or refused. Fall through to a file the person can open in Calendar.
+    }
+  }
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
 }
 
 export function runOutDay(medicine: Medicine, holidayStart: string): string | null {
@@ -307,24 +339,20 @@ function tripIcs(args: {
       const place = placeLabel(args.legs, zone, start);
       const summary = `${dose.name} ${dose.dose}`;
       const description = `${place}. Local ${dose.localLabel}. UK ${dose.ukLabel}. ${FOOD_LABEL[dose.food]}. ${WATER_LABEL[dose.water]}.`;
-      events.push(`BEGIN:VEVENT
-UID:${dose.key.replace(/[^a-zA-Z0-9]/g, "")}@meridian
+      events.push(fold(`BEGIN:VEVENT
+UID:${dose.key.replace(/[^a-zA-Z0-9]/g, "").slice(0, 48)}@meridian
 DTSTAMP:${icsUtc(new Date())}
 DTSTART:${icsUtc(start)}
 DTEND:${icsUtc(end)}
 SUMMARY:${icsText(summary)}
 DESCRIPTION:${icsText(description)}
+STATUS:CONFIRMED
 BEGIN:VALARM
-TRIGGER:-PT15M
 ACTION:DISPLAY
 DESCRIPTION:${icsText(summary)}
+TRIGGER:${alarmTrigger(start, zone)}
 END:VALARM
-BEGIN:VALARM
-TRIGGER:PT0M
-ACTION:DISPLAY
-DESCRIPTION:${icsText(summary)}
-END:VALARM
-END:VEVENT`);
+END:VEVENT`));
     }
   }
   return `BEGIN:VCALENDAR
@@ -337,8 +365,31 @@ END:VCALENDAR
 `;
 }
 
+function alarmTrigger(at: Date, zone: string): string {
+  const lead = new Date(at.getTime() - 15 * 60_000);
+  if (partsInZone(lead, zone).hour >= 6) return "-PT15M";
+  const parts = partsInZone(lead, zone);
+  const wake = zonedTimeToUtc(zone, parts.year, parts.month, parts.day, 6, 0);
+  const alert = wake.getTime() <= at.getTime() ? wake : at;
+  const minutes = Math.round((alert.getTime() - at.getTime()) / 60_000);
+  if (minutes === 0) return "PT0M";
+  return minutes < 0 ? `-PT${Math.abs(minutes)}M` : `PT${minutes}M`;
+}
+
 function icsUtc(date: Date): string {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function fold(block: string): string {
+  return block
+    .split("\n")
+    .map((line) => {
+      if (line.length <= 73) return line;
+      const parts = [line.slice(0, 73)];
+      for (let index = 73; index < line.length; index += 72) parts.push(" " + line.slice(index, index + 72));
+      return parts.join("\n");
+    })
+    .join("\n");
 }
 
 function icsText(value: string): string {

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { chime, unlockAudio } from "@/lib/chime";
 import { FOOD_LABEL, WATER_LABEL, liveAgenda, makeTargetAt, scheduleZoneForDay } from "@/lib/schedule";
 import { useMeridian } from "@/lib/store";
-import { HOME_TZ, dayKeyInZone, phoneZoneName } from "@/lib/time";
+import { HOME_TZ, dayKeyInZone, partsInZone, phoneZoneName } from "@/lib/time";
 import { History } from "./history";
 import { Journey } from "./journey";
 import { Kit } from "./kit";
@@ -126,6 +126,7 @@ function Ready() {
     const urgent = open.some((dose) => dose.state === "due" || dose.state === "overdue");
     document.title = urgent ? "Due · Meridian" : "Meridian";
     for (const dose of open) {
+      if (partsInZone(now, zone).hour < 6) continue;
       const dueish = dose.state === "due" || dose.state === "overdue";
       if (!seen.current.has(dose.key)) {
         seen.current.add(dose.key);

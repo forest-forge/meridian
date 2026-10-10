@@ -70,6 +70,7 @@ export function Journey({ onAdd, onEdit }: { onAdd: () => void; onEdit: (id: str
     setFileNote(null);
     const opened = await downloadTripCalendar({ medicines, legs, holidayStart, holidayEnd, clock, shiftMinutesPerDay: shift });
     if (!opened) setFileNote("The calendar file could not open. Try again.");
+    else setFileNote("Open it in Calendar and add all. Each dose has an alarm 15 minutes before, and never before 06:00.");
   }
 
   return (
