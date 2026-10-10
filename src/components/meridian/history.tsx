@@ -31,27 +31,30 @@ export function History() {
   const today = dayKeyInZone(now, zones(dayKeyInZone(now, HOME_TZ)));
   const targetAt = useMemo(() => makeTargetAt(legs, choice, phoneTz), [legs, choice, phoneTz]);
 
-  const days = Array.from({ length: 10 }, (_, index) => shiftDayKey(today, -index));
-  const groups = days.map((dayKey) => {
-    const { doses } = liveAgenda({
-      medicines,
-      dayKey,
-      labelZone: scheduleZoneForDay(dayKey, legs, choice),
-      zoneForDay: (key) => scheduleZoneForDay(key, legs, choice),
-      now,
-      leadMinutes: lead,
-      logs,
-      clock,
-      shiftMinutesPerDay: shift,
-      targetAt,
-      carryover: false,
-      holidayStart,
-      holidayEnd,
-      kitSavedDay: kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null,
+  const kitSavedDay = kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null;
+  const groups = useMemo(() => {
+    const days = Array.from({ length: 10 }, (_, index) => shiftDayKey(today, -index));
+    return days.map((dayKey) => {
+      const { doses } = liveAgenda({
+        medicines,
+        dayKey,
+        labelZone: scheduleZoneForDay(dayKey, legs, choice),
+        zoneForDay: (key) => scheduleZoneForDay(key, legs, choice),
+        now,
+        leadMinutes: lead,
+        logs,
+        clock,
+        shiftMinutesPerDay: shift,
+        targetAt,
+        carryover: false,
+        holidayStart,
+        holidayEnd,
+        kitSavedDay,
+      });
+      const logged = doses.filter((dose) => dose.state === "taken" || dose.state === "skipped" || dose.state === "missed");
+      return { dayKey, doses: logged };
     });
-    const logged = doses.filter((dose) => dose.state === "taken" || dose.state === "skipped" || dose.state === "missed");
-    return { dayKey, doses: logged };
-  });
+  }, [today, medicines, legs, choice, now, lead, logs, clock, shift, targetAt, holidayStart, holidayEnd, kitSavedDay]);
 
   const any = groups.some((group) => group.doses.length > 0);
 

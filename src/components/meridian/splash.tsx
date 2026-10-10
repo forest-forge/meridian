@@ -129,9 +129,13 @@ function Earth() {
       ctx.stroke();
     };
 
+    let last = 0;
     const tick = (t: number) => {
       if (stop) return;
-      draw(reduced ? 10 : (t / 20000) * 360);
+      if (t - last > 80) {
+        last = t;
+        draw(reduced ? 10 : (t / 20000) * 360);
+      }
       frame = requestAnimationFrame(tick);
     };
     const observer = new ResizeObserver(resize);

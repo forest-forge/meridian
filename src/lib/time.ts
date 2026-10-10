@@ -18,19 +18,30 @@ export function isTimeZone(timeZone: string): boolean {
   }
 }
 
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const offsetCache = new Map<string, number>();
+
+function formatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = formatters.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    formatters.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
 export function partsInZone(date: Date, timeZone: string): ZonedParts {
-  const fmt = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
   const bag: Record<string, string> = {};
-  for (const part of fmt.formatToParts(date)) {
+  for (const part of formatter(timeZone).formatToParts(date)) {
     if (part.type !== "literal") bag[part.type] = part.value;
   }
   let hour = Number(bag.hour);
@@ -62,9 +73,15 @@ export function offsetOnDay(timeZone: string, dayKey: string, fallback: Date = n
   return ukOffsetLabel(timeZone, at);
 }
 export function offsetMinutes(timeZone: string, date: Date): number {
+  const key = `${timeZone}|${Math.floor(date.getTime() / 60_000)}`;
+  const hit = offsetCache.get(key);
+  if (hit != null) return hit;
   const p = partsInZone(date, timeZone);
   const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-  return Math.round((asUtc - date.getTime()) / 60_000);
+  const value = Math.round((asUtc - date.getTime()) / 60_000);
+  if (offsetCache.size > 5000) offsetCache.clear();
+  offsetCache.set(key, value);
+  return value;
 }
 
 export function zonedTimeToUtc(

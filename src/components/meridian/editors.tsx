@@ -514,23 +514,27 @@ export function SettingsSheet({
         </Button>
       )}
       {confirmClear ? (
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="danger"
-            onClick={() => {
-              clearAll(now);
-              onClose();
-            }}
-          >
-            Clear everything
-          </Button>
-          <Button variant="quiet" onClick={() => setConfirmClear(false)}>
-            Cancel
-          </Button>
+        <div className="grid gap-2">
+          <p className="text-sm font-medium">Are you sure?</p>
+          <p className="text-sm text-muted">This clears the kit, the journey, the log and the wallet card, then starts again.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="danger"
+              onClick={() => {
+                clearAll(now);
+                onClose();
+              }}
+            >
+              Yes, restart
+            </Button>
+            <Button variant="quiet" onClick={() => setConfirmClear(false)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : (
         <Button variant="danger" onClick={() => setConfirmClear(true)}>
-          Clear kit and journey
+          Restart everything
         </Button>
       )}
       <Note>

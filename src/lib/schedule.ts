@@ -404,6 +404,8 @@ function ukInstants(hour: number, minute: number, dayKey: string, zone: string):
   return found;
 }
 
+const easeWalks = new Map<string, Map<string, number>>();
+
 function easeBody(
   dayKey: string,
   hour: number,
@@ -413,6 +415,15 @@ function easeBody(
   step: number,
   zoneForDay: (dayKey: string) => string,
 ): number {
+  const outwardEnd = holidayEnd && holidayEnd < dayKey ? holidayEnd : dayKey;
+  const last = holidayEnd && dayKey > holidayEnd ? dayKey : outwardEnd;
+  const zones: string[] = [];
+  for (let cursor = shiftDayKey(holidayStart, 1); cursor <= last; cursor = shiftDayKey(cursor, 1)) {
+    zones.push(zoneForDay(cursor) || HOME_TZ);
+  }
+  const sig = `${holidayStart}|${holidayEnd ?? ""}|${step}|${hour}|${minute}|${zones.join(",")}`;
+  const hit = easeWalks.get(sig)?.get(dayKey);
+  if (hit != null) return hit;
   const ukInstant = (key: string) => {
     const [year, month, day] = key.split("-").map(Number);
     return zonedTimeToUtc(HOME_TZ, year, month, day, hour, minute);
@@ -422,22 +433,26 @@ function easeBody(
     const move = Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
     return body + move;
   };
+  const byDay = new Map<string, number>();
   let body = offsetMinutes(HOME_TZ, ukInstant(shiftDayKey(holidayStart, -1)));
-  const outwardEnd = holidayEnd && holidayEnd < dayKey ? holidayEnd : dayKey;
-  // The leave day stays on UK time. The first step is the day after departure.
+  byDay.set(holidayStart, body);
+  let zoneIndex = 0;
   for (let cursor = shiftDayKey(holidayStart, 1); cursor <= outwardEnd; cursor = shiftDayKey(cursor, 1)) {
     const [year, month, day] = cursor.split("-").map(Number);
-    const zone = zoneForDay(cursor) || HOME_TZ;
+    const zone = zones[zoneIndex++] || HOME_TZ;
     const target = offsetMinutes(zone, zonedTimeToUtc(zone, year, month, day, hour, minute));
     body = toward(body, target);
+    byDay.set(cursor, body);
   }
-  // The home day does not jump. The walk back starts the day after.
   if (holidayEnd && dayKey > holidayEnd) {
     for (let cursor = shiftDayKey(holidayEnd, 1); cursor <= dayKey; cursor = shiftDayKey(cursor, 1)) {
       body = toward(body, offsetMinutes(HOME_TZ, ukInstant(cursor)));
+      byDay.set(cursor, body);
     }
   }
-  return body;
+  if (easeWalks.size > 24) easeWalks.clear();
+  easeWalks.set(sig, byDay);
+  return byDay.get(dayKey) ?? body;
 }
 
 /** Last calendar day to print or alarm. Ease keeps going until the walk home reaches London. */

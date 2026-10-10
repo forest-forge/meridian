@@ -64,22 +64,27 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
   const londonNoon = zonedTimeToUtc(HOME_TZ, year, month, day, 12, 0);
   const place = placeLabel(legs, zone, probe);
 
-  const { doses, carry } = liveAgenda({
-    medicines,
-    dayKey,
-    labelZone: zone,
-    zoneForDay: zoneForSchedule,
-    now,
-    leadMinutes: lead,
-    logs,
-    clock,
-    shiftMinutesPerDay: shift,
-    targetAt,
-    carryover: !planning,
-    holidayStart,
-    holidayEnd,
-    kitSavedDay: kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null,
-  });
+  const kitSavedDay = kitSavedAt ? dayKeyInZone(new Date(kitSavedAt), HOME_TZ) : null;
+  const { doses, carry } = useMemo(
+    () =>
+      liveAgenda({
+        medicines,
+        dayKey,
+        labelZone: zone,
+        zoneForDay: zoneForSchedule,
+        now,
+        leadMinutes: lead,
+        logs,
+        clock,
+        shiftMinutesPerDay: shift,
+        targetAt,
+        carryover: !planning,
+        holidayStart,
+        holidayEnd,
+        kitSavedDay,
+      }),
+    [medicines, dayKey, zone, legs, choice, now, lead, logs, clock, shift, targetAt, planning, holidayStart, holidayEnd, kitSavedDay],
+  );
 
   const open = [
     ...carry,

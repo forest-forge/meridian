@@ -13,6 +13,7 @@ import { Today } from "./today";
 import { Wizard } from "./wizard";
 import { Splash } from "./splash";
 import { cn } from "@/lib/cn";
+import { Button } from "./ui";
 
 export function MeridianApp() {
   const [ready, setReady] = useState(false);
@@ -80,6 +81,7 @@ function Ready() {
   const [tab, setTab] = useState<Tab>("today");
   const [planDay, setPlanDay] = useState<string | null>(null);
   const [settings, setSettings] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
   const [medicineId, setMedicineId] = useState<string | "new" | null>(null);
   const [legId, setLegId] = useState<string | "new" | null>(null);
   const seen = useRef(new Set<string>());
@@ -142,6 +144,7 @@ function Ready() {
     }
   }, [now, phoneTz]);
 
+  const clearAll = useMeridian((s) => s.clearAll);
   const medicines = useMeridian((s) => s.medicines);
   const legs = useMeridian((s) => s.legs);
   const editingMedicine = medicineId && medicineId !== "new" ? medicines.find((item) => item.id === medicineId) ?? null : null;
@@ -158,18 +161,26 @@ function Ready() {
             <Nav tab={tab} setTab={setTab} className="mt-8 grid gap-1" />
           </aside>
           <div className="mx-auto w-full max-w-lg px-4 py-6 pb-28 lg:max-w-xl lg:py-8 lg:pb-10">
-            <div className="mb-6 flex items-center justify-between lg:hidden">
+            <div className="mb-6 flex items-center justify-between gap-2 lg:hidden">
               <Brand />
-              <button
-                type="button"
-                className="inline-flex size-11 items-center justify-center rounded-md border border-line bg-surface"
-                aria-label="Reminder settings"
-                onClick={() => setSettings(true)}
-              >
-                <Settings className="size-5" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" className="inline-flex min-h-11 items-center rounded-md border border-line bg-surface px-3 text-sm" onClick={() => setConfirmRestart(true)}>
+                  Restart
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex size-11 items-center justify-center rounded-md border border-line bg-surface"
+                  aria-label="Reminder settings"
+                  onClick={() => setSettings(true)}
+                >
+                  <Settings className="size-5" aria-hidden="true" />
+                </button>
+              </div>
             </div>
-            <div className="mb-6 hidden justify-end lg:flex">
+            <div className="mb-6 hidden justify-end gap-2 lg:flex">
+              <button type="button" className="inline-flex min-h-11 items-center rounded-md border border-line bg-surface px-3 text-sm" onClick={() => setConfirmRestart(true)}>
+                Restart
+              </button>
               <button
                 type="button"
                 className="inline-flex min-h-11 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm"
@@ -179,6 +190,29 @@ function Ready() {
                 Reminders
               </button>
             </div>
+            {confirmRestart ? (
+              <div className="mb-4 rounded-xl border border-line bg-surface p-4">
+                <p className="text-sm font-medium">Are you sure?</p>
+                <p className="mt-1 text-sm text-muted">This clears the kit, the journey, the log and the wallet card, then starts again.</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      clearAll(now);
+                      setPlanDay(null);
+                      setTab("today");
+                      setSettings(false);
+                      setConfirmRestart(false);
+                    }}
+                  >
+                    Yes, restart
+                  </Button>
+                  <Button variant="quiet" onClick={() => setConfirmRestart(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
             {tab === "today" ? <Today onEdit={(id) => setMedicineId(id)} /> : null}
             {tab === "kit" ? <Kit onAdd={() => setMedicineId("new")} onEdit={(id) => setMedicineId(id)} /> : null}
             {tab === "journey" ? <Journey onAdd={() => setLegId("new")} onEdit={(id) => setLegId(id)} /> : null}
