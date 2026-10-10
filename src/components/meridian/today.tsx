@@ -153,7 +153,7 @@ export function Today({ onEdit }: { onEdit: (id: string) => void }) {
         <p className="text-sm text-muted">Nothing scheduled this day.</p>
       ) : null}
 
-      {hasEase ? <p className="text-sm text-muted">{easeNote(dayKey, holidayStart, holidayEnd, shift, zoneForSchedule, place)}</p> : null}
+      {hasEase ? <p className="text-sm text-muted">Ease across</p> : null}
 
       <div className="flex items-center gap-2">
         <Button variant="quiet" aria-label="Previous day" onClick={() => setPlanDay(shiftDayKey(dayKey, -1))}>
@@ -353,7 +353,7 @@ function DoseCard({
         <div className="mt-3 grid grid-cols-3 gap-2" role="group" aria-label="Clock">
           {(
             [
-              ["ease", "Ease"],
+              ["ease", "Ease across"],
               ["uk", "UK"],
               ["local", "Jump"],
             ] as const
@@ -384,13 +384,9 @@ function DoseCard({
       {dose.movedFrom ? (
         <p className="mt-3 text-sm text-subtle">Moved from {dose.movedFrom}. Asleep until 06:00.</p>
       ) : null}
-      {dose.mode === "ease" ? null : (
-        <p className="mt-3 text-sm text-subtle">
-          {dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
-        </p>
-      )}
-      {!planning && dose.state !== "taken" && dose.state !== "skipped" ? <p className="text-sm text-subtle tabular-nums">{when}</p> : null}
-      {gap ? <p className={`mt-2 text-sm ${gapExpected ? "text-subtle" : "text-danger"}`}>{gap}</p> : null}
+      <p className="mt-3 text-sm text-subtle">
+        {dose.mode === "ease" ? "Ease across" : dose.mode === "uk" ? clockLine(dose, zoneOffset, bodyOffset) : `${MODE_LABEL[dose.mode]} · ${clockLine(dose, zoneOffset, bodyOffset)}`}
+      </p>
       {!planning && dose.state !== "taken" && dose.state !== "skipped" ? (
         dose.state === "later" ? (
           <Button className="mt-4" variant="quiet" onClick={onTaken}>

@@ -385,7 +385,7 @@ export function Wizard() {
       {error ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
 
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <Button variant="quiet" onClick={addAnother}>Add another</Button>
+        <Button variant="quiet" onClick={addAnother}>Add Another Medicine</Button>
         <Button onClick={next}>Next</Button>
       </div>
     </main>
